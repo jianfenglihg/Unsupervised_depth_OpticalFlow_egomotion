@@ -59,6 +59,8 @@ class Model_depth(nn.Module):
         loss_list = []
         for scale in range(self.num_scales):
             img, img_warped, mask = img_list[scale], img_warped_list[scale], mask_list[scale]
+            texture_mask = F.interpolate(compute_texture_mask(img), size=(mask.shape[2], mask.shape[3]), mode='bilinear')
+            mask = mask*texture_mask
             divider = mask.mean((1,2,3))
             img_diff = torch.abs((img - img_warped)) * mask.repeat(1,3,1,1)
             loss_pixel = img_diff.mean((1,2,3)) / (divider + 1e-12) # (B)
