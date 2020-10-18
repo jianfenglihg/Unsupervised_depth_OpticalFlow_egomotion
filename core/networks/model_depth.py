@@ -68,6 +68,23 @@ class Model_depth(nn.Module):
         loss = torch.cat(loss_list, 1).sum(1) # (B)
         return loss
 
+    def compute_photometric_loss_min(self, img_list, img_warped_from_l_list, img_warped_from_r_list):
+        loss_list = []
+        for scale in range(self.num_scales):
+            img, img_warped_from_l, img_warped_from_r = img_list[scale], img_warped_from_l_list[scale], img_warped_from_r_list[scale]
+            mask = compute_texture_mask(img)
+            divider = mask.mean((1,2,3))
+            img_diff_l = torch.abs((img - img_warped_from_l))
+            img_diff_r = torch.abs((img - img_warped_from_r))
+            img_diff   = torch.cat([img_diff_l, img_diff_r], 1)
+            img_diff   = torch.min(img_diff,1,True)[0] * mask.repeat(1,3,1,1)
+            loss_pixel = img_diff.mean((1,2,3)) / (divider + 1e-12) # (B)
+            loss_list.append(loss_pixel[:,None])
+        loss = torch.cat(loss_list,1).sum(1) # (B)
+        return loss
+
+            
+
     def compute_consis_loss(self, predicted_depth_list, computed_depth_list):
         loss_list = []
         for scale in range(self.num_scales):
@@ -131,8 +148,8 @@ class Model_depth(nn.Module):
 
     def infer_depth(self, img):
         disp_list = self.depth_net(img)
-        # depth = self.disp2depth(disp_list[0])
-        return disp_list[0]
+        depth = self.disp2depth(disp_list[0])
+        return depth
 
 
     def forward(self, inputs):
@@ -152,9 +169,9 @@ class Model_depth(nn.Module):
         disp_list = self.depth_net(img) 
         disp_r_list = self.depth_net(img_r)
 
-        depth_l_list = [self.disp2depth(disp) for disp in disp_l_list]
-        depth_list   = [self.disp2depth(disp) for disp in disp_list]
-        depth_r_list = [self.disp2depth(disp) for disp in disp_r_list]
+        # depth_l_list = [self.disp2depth(disp) for disp in disp_l_list]
+        # depth_list   = [self.disp2depth(disp) for disp in disp_list]
+        # depth_r_list = [self.disp2depth(disp) for disp in disp_r_list]
 
 
         # pose infer
@@ -165,14 +182,15 @@ class Model_depth(nn.Module):
 
         # calculate reconstructed image
         reconstructed_imgs_from_l, valid_masks_to_l, predicted_depths_to_l, computed_depths_to_l = \
-            self.reconstruction(img_l, K, depth_list, depth_l_list, pose_vec_bwd)
+            self.reconstruction(img_l, K, disp_list, disp_l_list, pose_vec_bwd)
         reconstructed_imgs_from_r, valid_masks_to_r, predicted_depths_to_r, computed_depths_to_r = \
-            self.reconstruction(img_r, K, depth_list, depth_r_list, pose_vec_fwd)
+            self.reconstruction(img_r, K, disp_list, disp_r_list, pose_vec_fwd)
 
         loss_pack = {}
 
-        loss_pack['loss_depth_pixel'] = self.compute_photometric_loss(img_list,reconstructed_imgs_from_l,valid_masks_to_l) + \
-            self.compute_photometric_loss(img_list,reconstructed_imgs_from_r,valid_masks_to_r)
+        # loss_pack['loss_depth_pixel'] = self.compute_photometric_loss(img_list,reconstructed_imgs_from_l,valid_masks_to_l) + \
+        #     self.compute_photometric_loss(img_list,reconstructed_imgs_from_r,valid_masks_to_r)
+        loss_pack['loss_depth_pixel'] = self.compute_photometric_loss_min(img_list, reconstructed_imgs_from_l, reconstructed_imgs_from_r)
 
         loss_pack['loss_depth_ssim'] = self.compute_ssim_loss(img_list,reconstructed_imgs_from_l,valid_masks_to_l) + \
             self.compute_ssim_loss(img_list,reconstructed_imgs_from_r,valid_masks_to_r)

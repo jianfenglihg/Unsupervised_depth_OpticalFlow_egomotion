@@ -15,7 +15,7 @@ colorlib = [(0,0,255),(255,0,0),(0,255,0),(255,255,0),(0,255,255),(255,0,255),(0
 class Visualizer(object):
     def __init__(self, loss_weights_dict, dump_dir=None):
         self.loss_weights_dict = loss_weights_dict
-        self.use_flow_error = (self.loss_weights_dict['flow_error'] > 0)
+        # self.use_flow_error = (self.loss_weights_dict['flow_error'] > 0)
         self.dump_dir = dump_dir
 
         self.log_list = []

@@ -25,23 +25,9 @@ w_depth_ssim: 0.85
 w_depth_smooth: 10.0
 w_depth_consis: 0.1
 
-w_geo: 1.0
-w_pt_depth: 1.0
-w_pj_depth: 0.1
-w_flow_error: 0.0
-w_depth_smooth: 0.001
-
-
-h_flow_consist_alpha: 3.0
-h_flow_consist_beta: 0.05
-
 ransac_iters: 100
 ransac_points: 6000
 
-# Depth Setting
-depth_match_num: 6000
-depth_sample_ratio: 0.20
-depth_scale: 1
 
 # basic info
 img_hw: [256, 832]
