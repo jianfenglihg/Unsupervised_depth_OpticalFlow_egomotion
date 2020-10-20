@@ -1,8 +1,8 @@
 # Unsupervised_geometry
     # mask 
-        ## occlusion
-        ## dynamic
-        ## hole no texture
+        ## occlusion √
+        ## dynamic √ing
+        ## hole no texture √
     
     # geometry
         ## rigid
@@ -11,13 +11,15 @@
             ### F
             ### PFD
             ### FP
+            ### DFP->(PnP)
+
         ## dynamic
             ### DPDy
             ### DPDyF
     
     # consis
-        ## F bwd fwd consis
-        ## D prev next consis
+        ## F bwd fwd consis √
+        ## D prev next consis √
         ## P t t+1 t+2
 
     # network architecher
