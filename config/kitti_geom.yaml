@@ -1,0 +1,35 @@
+cfg_name: 'default'
+
+# dataset
+raw_base_dir: '/media/ljf/Data/kitti/kitti_raw'
+prepared_base_dir: '/home/ljf/Dataset/kitti_release'
+gt_2012_dir: '/media/ljf/Work/DATASET/kitti-flow/kitti2012/training'
+gt_2015_dir: '/media/ljf/Work/DATASET/kitti-flow/kitti2015/data_scene_flow/training'
+static_frames_txt: '/home/ljf/Documents/Unsupervised_geometry/data/eigen/static_frames.txt'
+test_scenes_txt: '/home/ljf/Documents/Unsupervised_geometry/data/eigen/test_scenes.txt'
+dataset: 'kitti_depth'
+num_scales: 3
+num_input_frames: 3
+
+# training
+num_iterations: 200000
+
+# loss hyperparameters
+w_flow_pixel: 0.15
+w_flow_ssim: 0.85 # w_pixel = 1 - w_ssim
+w_flow_smooth: 10.0
+w_flow_consis: 0.01
+
+w_depth_pixel: 0.15
+w_depth_ssim: 0.85
+w_depth_smooth: 10.0
+w_depth_consis: 0.1
+
+ransac_iters: 100
+ransac_points: 6000
+
+
+# basic info
+img_hw: [256, 832]
+use_svd_gpu: False
+

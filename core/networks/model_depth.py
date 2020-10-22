@@ -59,8 +59,8 @@ class Model_depth(nn.Module):
         loss_list = []
         for scale in range(self.num_scales):
             img, img_warped, mask = img_list[scale], img_warped_list[scale], mask_list[scale]
-            texture_mask = F.interpolate(compute_texture_mask(img), size=(mask.shape[2], mask.shape[3]), mode='bilinear')
-            mask = mask*texture_mask
+            # texture_mask = F.interpolate(compute_texture_mask(img), size=(mask.shape[2], mask.shape[3]), mode='bilinear')
+            # mask = mask*texture_mask
             divider = mask.mean((1,2,3))
             img_diff = torch.abs((img - img_warped)) * mask.repeat(1,3,1,1)
             loss_pixel = img_diff.mean((1,2,3)) / (divider + 1e-12) # (B)
@@ -72,13 +72,13 @@ class Model_depth(nn.Module):
         loss_list = []
         for scale in range(self.num_scales):
             img, img_warped_from_l, img_warped_from_r = img_list[scale], img_warped_from_l_list[scale], img_warped_from_r_list[scale]
-            mask = compute_texture_mask(img)
-            divider = mask.mean((1,2,3))
+            # mask = compute_texture_mask(img)
+            # divider = mask.mean((1,2,3))
             img_diff_l = torch.abs((img - img_warped_from_l))
             img_diff_r = torch.abs((img - img_warped_from_r))
             img_diff   = torch.cat([img_diff_l, img_diff_r], 1)
-            img_diff   = torch.min(img_diff,1,True)[0] * mask.repeat(1,3,1,1)
-            loss_pixel = img_diff.mean((1,2,3)) / (divider + 1e-12) # (B)
+            img_diff   = torch.min(img_diff,1,True)[0]
+            loss_pixel = img_diff.mean((1,2,3)) # (B)
             loss_list.append(loss_pixel[:,None])
         loss = torch.cat(loss_list,1).sum(1) # (B)
         return loss

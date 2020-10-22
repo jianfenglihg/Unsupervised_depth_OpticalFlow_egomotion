@@ -29,6 +29,27 @@ def load_model(model_dir, filename, model, optimizer):
 def train(cfg):
     # load model and optimizer
     model = get_model(cfg.mode)(cfg)
+    if cfg.mode == 'geom':
+        if cfg.depth_pretrained_model and not cfg.resume:
+            data = torch.load(cfg.depth_pretrained_model)['model_state_dict']
+            missing_keys, unexp_keys = model.load_state_dict(data, strict=False)
+            print('missing_keys')
+            print(missing_keys)
+            print('##############')
+            print('unexp_keys')
+            print(unexp_keys)
+            print('Load Depth Pretrained Model from ' + cfg.depth_pretrained_model)
+
+        if cfg.flow_pretrained_model:
+            data = torch.load(cfg.flow_pretrained_model)['model_state_dict']
+            missing_keys, unexp_keys = model.load_state_dict(data, strict=False)
+            print('missing_keys')
+            print(missing_keys)
+            print('##############')
+            print('unexp_keys')
+            print(unexp_keys)
+            print('Load Flow Pretrained Model from ' + cfg.flow_pretrained_model)
+        
     if cfg.multi_gpu:
         model = torch.nn.DataParallel(model)
     model = model.cuda()

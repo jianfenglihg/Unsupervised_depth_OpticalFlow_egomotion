@@ -37,7 +37,7 @@ class Visualizer(object):
             loss_depth_smooth = loss_pack['loss_depth_smooth'].mean().detach().cpu().numpy()
             loss_depth_consis = loss_pack['loss_depth_consis'].mean().detach().cpu().numpy()
             print('iter: {4}, loss_depth_pixel: {0:.6f}, loss_depth_ssim: {1:.6f}, loss_depth_smooth: {2:.6f}, loss_depth_consis: {3:.6f}'.format(loss_depth_pixel, loss_depth_ssim, loss_depth_smooth, loss_depth_consis, iter_))
-        else:
+        if 'loss_flow_pixel' in loss_pack.keys():
             loss_flow_pixel  = loss_pack['loss_flow_pixel'].mean().detach().cpu().numpy()
             loss_flow_ssim   = loss_pack['loss_flow_ssim'].mean().detach().cpu().numpy()
             loss_flow_smooth = loss_pack['loss_flow_smooth'].mean().detach().cpu().numpy()

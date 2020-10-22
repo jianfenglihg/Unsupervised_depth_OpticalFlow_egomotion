@@ -5,6 +5,7 @@ from model_triangulate_pose import Model_triangulate_pose
 from model_depth_pose import Model_depth_pose
 from model_flowposenet import Model_flowposenet
 from model_depth import Model_depth
+from model_geometry import Model_geometry
 
 # def get_model(mode):
 #     if mode == 'flow':
@@ -23,5 +24,7 @@ def get_model(mode):
         return Model_flow
     elif mode == 'depth':
         return Model_depth
+    elif mode == 'geom':
+        return Model_geometry
     else:
         raise ValueError('Mode {} not found.'.format(mode))
