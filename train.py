@@ -136,11 +136,11 @@ def train(cfg):
             else:
                 model_eval = model
             if cfg.dataset == 'kitti_depth' or cfg.dataset == 'kitti_odo':
-                if not (cfg.mode == 'depth' or cfg.mode == 'flowposenet'):
+                if cfg.mode == 'flow':
                     eval_2012_res = test_kitti_2012(cfg, model_eval, gt_flows_2012, noc_masks_2012)
                     eval_2015_res = test_kitti_2015(cfg, model_eval, gt_flows_2015, noc_masks_2015, gt_masks_2015, depth_save_dir=os.path.join(cfg.model_dir, 'results'))
                     visualizer.add_log_pack({'eval_2012_res': eval_2012_res, 'eval_2015_res': eval_2015_res})
-                if cfg.mode == 'depth':
+                if (cfg.mode == 'depth' or cfg.mode == 'geom'):
                     eval_depth_res = test_eigen_depth(cfg, model_eval)
                     visualizer.add_log_pack({'eval_eigen_res': eval_depth_res})
 

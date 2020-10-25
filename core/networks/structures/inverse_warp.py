@@ -1,6 +1,7 @@
 from __future__ import division
 import torch
 import torch.nn.functional as F
+import numpy as np
 
 pixel_coords = None
 
@@ -43,8 +44,40 @@ def pixel2cam(depth, intrinsics_inv):
     cam_coords = (intrinsics_inv @ current_pixel_coords).reshape(b, 3, h, w)
     return cam_coords * depth.unsqueeze(1)
 
+def cam2pixel_change_shape(cam_coords, proj_c2p_rot, proj_c2p_tr, padding_mode=None):
+    """Transform coordinates in the camera frame to the pixel frame.
+    Args:
+        cam_coords: pixel coordinates defined in the first camera coordinates system -- [B, 4, H, W]
+        proj_c2p_rot: rotation matrix of cameras -- [B, 3, 4]
+        proj_c2p_tr: translation vectors of cameras -- [B, 3, 1]
+    Returns:
+        array of [-1,1] coordinates -- [B, 2, H, W]
+    """
+    b, _, h, w = cam_coords.size()
+    cam_coords_flat = cam_coords.reshape(b, 3, -1)  # [B, 3, H*W]
+    if proj_c2p_rot is not None:
+        pcoords = proj_c2p_rot @ cam_coords_flat
+    else:
+        pcoords = cam_coords_flat
 
-def cam2pixel(cam_coords, proj_c2p_rot, proj_c2p_tr, padding_mode):
+    if proj_c2p_tr is not None:
+        pcoords = pcoords + proj_c2p_tr  # [B, 3, H*W]
+    X = pcoords[:, 0]
+    Y = pcoords[:, 1]
+    Z = pcoords[:, 2].clamp(min=1e-3)
+
+    # Normalized, -1 if on extreme left, 1 if on extreme right (x = w-1) [B, H*W]
+    # X_norm = 2*(X / Z)/(w-1) - 1
+    # Y_norm = 2*(Y / Z)/(h-1) - 1  # Idem [B, H*W]
+
+    X_pixel = (X / Z).reshape(b,h,w).unsqueeze(1) # B 1 H W
+    Y_pixel = (Y / Z).reshape(b,h,w).unsqueeze(1)
+
+    pixel_coords = torch.cat([X_pixel, Y_pixel], dim=1)  # [B, 2, H, W]
+
+    return pixel_coords
+
+def cam2pixel(cam_coords, proj_c2p_rot, proj_c2p_tr, padding_mode=None):
     """Transform coordinates in the camera frame to the pixel frame.
     Args:
         cam_coords: pixel coordinates defined in the first camera coordinates system -- [B, 4, H, W]
@@ -268,3 +301,51 @@ def inverse_warp2(img, depth, ref_depth, pose, intrinsics, padding_mode='zeros')
         ref_depth, src_pixel_coords, padding_mode=padding_mode).clamp(min=1e-3)
 
     return projected_img, valid_mask, projected_depth, computed_depth
+
+def meshgrid(h, w):
+        xx, yy = np.meshgrid(np.arange(0,w), np.arange(0,h))
+        meshgrid = np.transpose(np.stack([xx,yy], axis=-1), [2,0,1]) # [2,h,w]
+        meshgrid = torch.from_numpy(meshgrid)
+        return meshgrid
+
+def calculate_rigid_flow(depth, pose, intrinsics):
+
+    batch_size, _, height, width = depth.size()
+
+    grid = meshgrid(height, width).float().to(depth.get_device()).unsqueeze(0).repeat(batch_size,1,1,1) # B 2 H W
+
+    cam_coords = pixel2cam(depth.squeeze(1), intrinsics.inverse())  # [B,3,H,W]
+
+    pose_mat = pose_vec2mat(pose)  # [B,3,4]
+
+    # Get projection matrix for tgt camera frame to source pixel frame
+    proj_cam_to_src_pixel = intrinsics @ pose_mat  # [B, 3, 4]
+
+    rot, tr = proj_cam_to_src_pixel[:, :, :3], proj_cam_to_src_pixel[:, :, -1:]
+
+    src_pixel_coords = cam2pixel_change_shape(cam_coords, rot, tr) # not normalized
+
+    rigid_flow = src_pixel_coords - grid
+
+    return rigid_flow
+
+def skewsymmetric(translation):
+    B = translation.size(0)
+    x, y, z = translation[:,0], translation[:,1], translation[:,2]
+    zeros =  torch.zeros(B,1).to(translation.get_device())
+
+    skewsymmetric_mat = torch.stack([zeros, -z, y,
+                        z,  zeros, -x,
+                        -y, x,  zeros], dim=1).view(B, 3, 3)
+    return skewsymmetric_mat
+
+def compute_essential_matrix(vec, rotation_mode='euler'):
+    translation = vec[:, :3]
+    rot = vec[:,3:]
+    if rotation_mode == 'euler':
+        rot_mat = euler2mat(rot)  # [B, 3, 3]
+    elif rotation_mode == 'quat':
+        rot_mat = quat2mat(rot)  # [B, 3, 3]
+    skewsymmetric_mat = skewsymmetric(translation) # [B 3 3]
+    essential_mat = skewsymmetric_mat.bmm(rot_mat)
+    return essential_mat

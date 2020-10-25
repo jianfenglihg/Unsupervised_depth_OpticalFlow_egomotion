@@ -1,20 +1,25 @@
 # Unsupervised_geometry
     # mask 
         ## occlusion √
-        ## dynamic √ing
+        ## dynamic √
         ## hole no texture √
-    
-    # geometry
+
+    # photometric
         ## rigid
-            ### DP
-            ### DPF
-            ### F
-            ### PFD
-            ### FP
-            ### DFP->(PnP)
+            ### DP √
 
         ## dynamic
             ### DPDy
+            ### F √
+    
+    # geometry
+        ## rigid
+            ### DPF √
+            ### PFD
+            ### FP √ing
+            ### DFP->(PnP)
+
+        ## dynamic
             ### DPDyF
     
     # consis

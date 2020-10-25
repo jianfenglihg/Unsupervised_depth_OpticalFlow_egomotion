@@ -6,6 +6,6 @@ from ransac import reduced_ransac
 from depth_model import Depth_Model
 from net_utils import conv, deconv, warp_flow
 from flowposenet import FlowPoseNet
-from inverse_warp import inverse_warp2
+from inverse_warp import inverse_warp2, calculate_rigid_flow, compute_essential_matrix
 from pose_cnn import PoseCNN
 from utils import compute_texture_mask

@@ -13,5 +13,7 @@ def generate_loss_weights_dict(cfg):
     weight_dict['loss_depth_smooth'] =  cfg.w_depth_smooth
     weight_dict['loss_depth_consis'] =  cfg.w_depth_consis
 
+    weight_dict['loss_depth_flow_consis'] = cfg.w_depth_flow_consis
+
     return weight_dict
 
