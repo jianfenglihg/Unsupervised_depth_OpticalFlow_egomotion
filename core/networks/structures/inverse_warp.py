@@ -331,10 +331,10 @@ def calculate_rigid_flow(depth, pose, intrinsics):
 
 def skewsymmetric(translation):
     B = translation.size(0)
-    x, y, z = translation[:,0], translation[:,1], translation[:,2]
-    zeros =  torch.zeros(B,1).to(translation.get_device())
+    x, y, z = translation[:,0].unsqueeze(1), translation[:,1].unsqueeze(1), translation[:,2].unsqueeze(1)
+    zeros =  torch.zeros(x.size()).to(translation.get_device())
 
-    skewsymmetric_mat = torch.stack([zeros, -z, y,
+    skewsymmetric_mat = torch.cat([zeros, -z, y,
                         z,  zeros, -x,
                         -y, x,  zeros], dim=1).view(B, 3, 3)
     return skewsymmetric_mat

@@ -45,7 +45,8 @@ class Visualizer(object):
             print('iter: {4}, loss_flow_pixel: {0:.6f}, loss_flow_ssim: {1:.6f}, loss_flow_smooth: {2:.6f}, loss_flow_consis: {3:.6f}'.format(loss_flow_pixel, loss_flow_ssim, loss_flow_smooth, loss_flow_consis, iter_))
         if 'loss_depth_flow_consis' in loss_pack.keys():
             loss_depth_flow_consis = loss_pack['loss_depth_flow_consis'].mean().detach().cpu().numpy()
-            print('iter: {1}, loss_depth_flow_consis: {0:.6f}'.format(loss_depth_flow_consis, iter_))
+            loss_epipolar = loss_pack['loss_epipolar'].mean().detach().cpu().numpy()
+            print('iter: {2}, loss_epipolar: {1:.6f}, loss_depth_flow_consis: {0:.6f}'.format(loss_depth_flow_consis, loss_epipolar, iter_))
 
         # if 'pt_depth_loss' in loss_pack.keys():
         #     loss_pt_depth = loss_pack['pt_depth_loss'].mean().detach().cpu().numpy()
