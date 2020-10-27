@@ -287,6 +287,14 @@ class Model_geometry(nn.Module):
         loss = (dist_map * mask.transpose(1,2)).mean([1,2]) / mask.mean([1,2])
         return loss
 
+    def compute_pnp_loss(self, depth, flow, pose):
+
+        return None
+    
+    def compute_triangulate_loss(self, flow, pose, depth):
+
+        return None
+
     def compute_dynamic_mask(self, intrinsics, depth, pose, flow):
         depth_0 = depth[0]
         dynamic_masks = []
@@ -317,15 +325,15 @@ class Model_geometry(nn.Module):
         for scale in range(scales):
             flow_diff = flow_diffs[scale]
             b,_,w,h = flow_diff.size()
-            # flow_diff_normalized = torch.cat([flow_diff[:,0,:,:].unsqueeze(1)*2/(w-1), flow_diff[:,1,:,:].unsqueeze(1)*2/(h-1)],1)
+            flow_diff_normalized = torch.cat([flow_diff[:,0,:,:].unsqueeze(1)*2/(w-1), flow_diff[:,1,:,:].unsqueeze(1)*2/(h-1)],1)
             if masks == None:
                 mask = torch.ones(b,1,w,h).to(flow_diff.get_device())
             else:
                 mask = masks[scale]
             
             divider = mask.mean((1,2,3))
-            error = (flow_diff*mask.repeat(1,2,1,1)).mean((1,2,3)) / (divider + 1e-12)
-            # error = (self.get_flow_norm(flow_diff_normalized)*mask).mean((1,2,3)) / (divider + 1e-12)
+            # error = (flow_diff*mask.repeat(1,2,1,1)).mean((1,2,3)) / (divider + 1e-12)
+            error = (flow_diff_normalized*mask.repeat(1,2,1,1)).mean((1,2,3)) / (divider + 1e-12)
             loss_list.append(error[:,None])
         loss = torch.cat(loss_list, 1).sum(1) # (B)
         return loss
@@ -416,7 +424,7 @@ class Model_geometry(nn.Module):
 
         loss_pack['loss_depth_ssim'] = self.compute_ssim_loss(img_list,reconstructed_imgs_from_l,bwd_mask) + \
             self.compute_ssim_loss(img_list,reconstructed_imgs_from_r,fwd_mask)
-        #loss_pack['loss_depth_ssim'] = torch.zeros([2]).to(img_l.get_device()).requires_grad_()
+        # loss_pack['loss_depth_ssim'] = torch.zeros([2]).to(img_l.get_device()).requires_grad_()
 
         loss_pack['loss_depth_smooth'] = self.compute_smooth_loss(img, disp_list) + self.compute_smooth_loss(img_l, disp_l_list) + \
             self.compute_smooth_loss(img_r, disp_r_list)
@@ -446,9 +454,9 @@ class Model_geometry(nn.Module):
         # fusion geom
         # loss_pack['loss_depth_flow_consis'] = self.compute_depth_flow_consis_loss(flow_diff_bwd, bwd_mask, 1) + \
         #     self.compute_depth_flow_consis_loss(flow_diff_fwd, fwd_mask, 1)
-        loss_pack['loss_depth_flow_consis'] = self.compute_depth_flow_consis_loss(flow_diff_bwd, valid_masks_to_l, 1) + \
-            self.compute_depth_flow_consis_loss(flow_diff_fwd, valid_masks_to_r, 1)
-        #loss_pack['loss_depth_flow_consis'] = torch.zeros([2]).to(img_l.get_device()).requires_grad_()
+        # loss_pack['loss_depth_flow_consis'] = self.compute_depth_flow_consis_loss(flow_diff_bwd, valid_masks_to_l, 1) + \
+        #     self.compute_depth_flow_consis_loss(flow_diff_fwd, valid_masks_to_r, 1)
+        loss_pack['loss_depth_flow_consis'] = torch.zeros([2]).to(img_l.get_device()).requires_grad_()
 
         # loss_pack['loss_epipolar'] = self.compute_epipolar_loss(pose_vec_bwd,optical_flows_bwd[0],K_inv,bwd_mask[0]) + \
         #     self.compute_epipolar_loss(pose_vec_fwd,optical_flows_fwd[0],K_inv,fwd_mask[0])

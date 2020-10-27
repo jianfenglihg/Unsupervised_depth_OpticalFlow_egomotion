@@ -15,7 +15,7 @@
     # geometry
         ## rigid
             ### DPF √
-            ### PFD 
+            ### PFD √ing
             ### FP √
             ### DFP->(PnP)
 

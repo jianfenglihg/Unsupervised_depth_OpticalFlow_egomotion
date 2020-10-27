@@ -61,35 +61,7 @@ def train(cfg):
             cfg.iter_start, model, optimizer = load_model(cfg.model_dir, 'iter_{}.pth'.format(cfg.iter_start), model, optimizer)
         else:
             cfg.iter_start, model, optimizer = load_model(cfg.model_dir, 'last.pth', model, optimizer)
-    elif cfg.flow_pretrained_model:
-        data = torch.load(cfg.flow_pretrained_model)['model_state_dict']
-        renamed_dict = OrderedDict()
-        for k, v in data.items():
-            if cfg.multi_gpu:
-                name = 'module.model_flow.' + k
-            elif cfg.mode == 'flowposenet':
-                name = 'model_flow.' + k
-            else:
-                name = 'model_pose.model_flow.' + k
-            renamed_dict[name] = v
-        missing_keys, unexp_keys = model.load_state_dict(renamed_dict, strict=False)
-        print(missing_keys)
-        print(unexp_keys)
-        print('Load Flow Pretrained Model from ' + cfg.flow_pretrained_model)
-    if cfg.depth_pretrained_model and not cfg.resume:
-        data = torch.load(cfg.depth_pretrained_model)['model_state_dict']
-        if cfg.multi_gpu:
-            renamed_dict = OrderedDict()
-            for k, v in data.items():
-                name = 'module.' + k
-                renamed_dict[name] = v
-            missing_keys, unexp_keys = model.load_state_dict(renamed_dict, strict=False)
-        else:
-            missing_keys, unexp_keys = model.load_state_dict(data, strict=False)
-        print(missing_keys)
-        print('##############')
-        print(unexp_keys)
-        print('Load Depth Pretrained Model from ' + cfg.depth_pretrained_model)
+    
    
     loss_weights_dict = generate_loss_weights_dict(cfg)
     visualizer = Visualizer(loss_weights_dict, cfg.log_dump_dir)
@@ -140,7 +112,13 @@ def train(cfg):
                     eval_2012_res = test_kitti_2012(cfg, model_eval, gt_flows_2012, noc_masks_2012)
                     eval_2015_res = test_kitti_2015(cfg, model_eval, gt_flows_2015, noc_masks_2015, gt_masks_2015, depth_save_dir=os.path.join(cfg.model_dir, 'results'))
                     visualizer.add_log_pack({'eval_2012_res': eval_2012_res, 'eval_2015_res': eval_2015_res})
-                if (cfg.mode == 'depth' or cfg.mode == 'geom'):
+                if cfg.mode == 'depth':
+                    eval_depth_res = test_eigen_depth(cfg, model_eval)
+                    visualizer.add_log_pack({'eval_eigen_res': eval_depth_res})
+                if cfg.mode == 'geom':
+                    eval_2012_res = test_kitti_2012(cfg, model_eval, gt_flows_2012, noc_masks_2012)
+                    eval_2015_res = test_kitti_2015(cfg, model_eval, gt_flows_2015, noc_masks_2015, gt_masks_2015, depth_save_dir=os.path.join(cfg.model_dir, 'results'))
+                    visualizer.add_log_pack({'eval_2012_res': eval_2012_res, 'eval_2015_res': eval_2015_res})
                     eval_depth_res = test_eigen_depth(cfg, model_eval)
                     visualizer.add_log_pack({'eval_eigen_res': eval_depth_res})
 
