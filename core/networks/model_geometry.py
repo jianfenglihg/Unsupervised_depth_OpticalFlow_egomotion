@@ -411,7 +411,9 @@ class Model_geometry(nn.Module):
         fwd_mask = self.fusion_mask(valid_masks_to_r, occ_mask_fwd, dynamic_masks_fwd)
         bwd_mask = self.fusion_mask(valid_masks_to_l, occ_mask_bwd, dynamic_masks_bwd)
 
-        # cv2.imwrite('./meta/fwd_mask.png', np.transpose(255*fwd_mask[0][0].cpu().detach().numpy(), [1,2,0]).astype(np.uint8))
+        cv2.imwrite('./meta/occ_mask.png', np.transpose(255*occ_mask_fwd[0][0].cpu().detach().numpy(), [1,2,0]).astype(np.uint8))
+        cv2.imwrite('./meta/dyna_mask.png', np.transpose(255*dynamic_masks_fwd[0][0].cpu().detach().numpy(), [1,2,0]).astype(np.uint8))
+        cv2.imwrite('./meta/valid_mask.png', np.transpose(255*valid_masks_to_r[0][0].cpu().detach().numpy(), [1,2,0]).astype(np.uint8))
 
         # loss function
         loss_pack = {}
