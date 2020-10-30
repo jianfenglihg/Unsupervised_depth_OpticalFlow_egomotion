@@ -6,6 +6,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.autograd import Variable
 
 from pytorch_ssim import SSIM
 from structures import *
@@ -118,18 +119,18 @@ class Model_geometry(nn.Module):
         loss = torch.cat(loss_list, 1).sum(1) # (B)
         return loss
 
-    def compute_photometric_flow_loss(self, img_list, img_warped_list, valid_mask_list, occ_mask_list):
-        loss_list = []
-        for scale in range(self.num_scales):
-            img, img_warped, valid_mask, occ_mask = img_list[scale], img_warped_list[scale], valid_mask_list[scale], occ_mask_list[scale]
-            # texture_mask = F.interpolate(compute_texture_mask(img), size=(mask.shape[2], mask.shape[3]), mode='bilinear')
-            mask = valid_mask * occ_mask
-            divider = mask.mean((1,2,3))
-            img_diff = torch.abs((img - img_warped)) * mask.repeat(1,3,1,1)
-            loss_pixel = img_diff.mean((1,2,3)) / (divider + 1e-12) # (B)
-            loss_list.append(loss_pixel[:,None])
-        loss = torch.cat(loss_list, 1).sum(1) # (B)
-        return loss
+    # def compute_photometric_flow_loss(self, img_list, img_warped_list, valid_mask_list, occ_mask_list):
+    #     loss_list = []
+    #     for scale in range(self.num_scales):
+    #         img, img_warped, valid_mask, occ_mask = img_list[scale], img_warped_list[scale], valid_mask_list[scale], occ_mask_list[scale]
+    #         # texture_mask = F.interpolate(compute_texture_mask(img), size=(mask.shape[2], mask.shape[3]), mode='bilinear')
+    #         mask = valid_mask * occ_mask
+    #         divider = mask.mean((1,2,3))
+    #         img_diff = torch.abs((img - img_warped)) * mask.repeat(1,3,1,1)
+    #         loss_pixel = img_diff.mean((1,2,3)) / (divider + 1e-12) # (B)
+    #         loss_list.append(loss_pixel[:,None])
+    #     loss = torch.cat(loss_list, 1).sum(1) # (B)
+    #     return loss
 
     def compute_consis_loss(self, predicted_depth_list, computed_depth_list):
         loss_list = []
@@ -148,7 +149,7 @@ class Model_geometry(nn.Module):
             fwd_flow, bwd_flow, occ_mask = fwd_flow_pyramid[scale], bwd_flow_pyramid[scale], occ_mask_list[scale]
             fwd_flow_norm = self.get_flow_normalization(fwd_flow)
             bwd_flow_norm = self.get_flow_normalization(bwd_flow).float()
-            # bwd_flow_norm = Variable(bwd_flow_norm.data,requires_grad=False)
+            bwd_flow_norm = Variable(bwd_flow_norm.data,requires_grad=False)
             occ_mask = 1-occ_mask
 
             divider = occ_mask.mean((1,2,3))
@@ -350,13 +351,12 @@ class Model_geometry(nn.Module):
 
         return fusion_mask
 
-    def fusion_mask_occ_valid(self, valid_mask, occ_mask, dynamic_mask):
+    def fusion_mask_occ_valid(self, valid_mask, occ_mask):
         fusion_mask = []
         for scale in range(self.num_scales):
             valid = valid_mask[scale]
             occ = occ_mask[scale]
-            dyna = dynamic_mask[scale]
-            mask = valid * occ * dyna
+            mask = valid * occ
             fusion_mask.append(mask)
 
         return fusion_mask
@@ -411,9 +411,14 @@ class Model_geometry(nn.Module):
         fwd_mask = self.fusion_mask(valid_masks_to_r, occ_mask_fwd, dynamic_masks_fwd)
         bwd_mask = self.fusion_mask(valid_masks_to_l, occ_mask_bwd, dynamic_masks_bwd)
 
-        cv2.imwrite('./meta/occ_mask.png', np.transpose(255*occ_mask_fwd[0][0].cpu().detach().numpy(), [1,2,0]).astype(np.uint8))
-        cv2.imwrite('./meta/dyna_mask.png', np.transpose(255*dynamic_masks_fwd[0][0].cpu().detach().numpy(), [1,2,0]).astype(np.uint8))
-        cv2.imwrite('./meta/valid_mask.png', np.transpose(255*valid_masks_to_r[0][0].cpu().detach().numpy(), [1,2,0]).astype(np.uint8))
+        fwd_mask_valid_occ = self.fusion_mask_occ_valid(valid_masks_to_r, occ_mask_fwd)
+        bwd_mask_valid_occ = self.fusion_mask_occ_valid(valid_masks_to_l, occ_mask_bwd)
+
+
+
+        # cv2.imwrite('./meta/occ_mask.png', np.transpose(255*occ_mask_fwd[0][0].cpu().detach().numpy(), [1,2,0]).astype(np.uint8))
+        # cv2.imwrite('./meta/dyna_mask.png', np.transpose(255*dynamic_masks_fwd[0][0].cpu().detach().numpy(), [1,2,0]).astype(np.uint8))
+        # cv2.imwrite('./meta/valid_mask.png', np.transpose(255*valid_masks_to_r[0][0].cpu().detach().numpy(), [1,2,0]).astype(np.uint8))
 
         # loss function
         loss_pack = {}
@@ -438,12 +443,12 @@ class Model_geometry(nn.Module):
 
 
         # flow
-        loss_pack['loss_flow_pixel'] = self.compute_photometric_flow_loss(img_list,img_warped_pyramid_from_l,valid_masks_to_l, occ_mask_bwd) + \
-            self.compute_photometric_flow_loss(img_list,img_warped_pyramid_from_r,valid_masks_to_r, occ_mask_fwd)
+        loss_pack['loss_flow_pixel'] = self.compute_photometric_loss(img_list,img_warped_pyramid_from_l,bwd_mask_valid_occ) + \
+            self.compute_photometric_loss(img_list,img_warped_pyramid_from_r,fwd_mask_valid_occ)
         # loss_pack['loss_flow_pixel'] = torch.zeros([2]).to(img_l.get_device()).requires_grad_()
 
-        loss_pack['loss_flow_ssim'] = self.compute_ssim_loss(img_list,img_warped_pyramid_from_l,valid_masks_to_l) + \
-            self.compute_ssim_loss(img_list,img_warped_pyramid_from_r,valid_masks_to_r)
+        loss_pack['loss_flow_ssim'] = self.compute_ssim_loss(img_list,img_warped_pyramid_from_l,bwd_mask_valid_occ) + \
+            self.compute_ssim_loss(img_list,img_warped_pyramid_from_r,fwd_mask_valid_occ)
         # loss_pack['loss_flow_ssim'] = torch.zeros([2]).to(img_l.get_device()).requires_grad_()
 
         loss_pack['loss_flow_smooth'] = self.compute_loss_flow_smooth(optical_flows_fwd, img_list)  + \
