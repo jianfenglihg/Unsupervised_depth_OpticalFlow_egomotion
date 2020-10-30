@@ -392,6 +392,8 @@ class Model_geometry(nn.Module):
         optical_flows_bwd = self.pwc_model(feature_list, feature_list_l, [img_h, img_w])
         optical_flows_fwd = self.pwc_model(feature_list, feature_list_r, [img_h, img_w])
 
+        # print(len(optical_flows_fwd))
+
 
         # calculate reconstructed image using depth and pose
         reconstructed_imgs_from_l, valid_masks_to_l, predicted_depths_to_l, computed_depths_to_l = \
@@ -459,11 +461,11 @@ class Model_geometry(nn.Module):
         # loss_pack['loss_flow_consis'] = torch.zeros([2]).to(img_l.get_device()).requires_grad_()
         
         # fusion geom
-        # loss_pack['loss_depth_flow_consis'] = self.compute_depth_flow_consis_loss(flow_diff_bwd, bwd_mask, 1) + \
-        #     self.compute_depth_flow_consis_loss(flow_diff_fwd, fwd_mask, 1)
+        loss_pack['loss_depth_flow_consis'] = self.compute_depth_flow_consis_loss(flow_diff_bwd, bwd_mask, 1) + \
+            self.compute_depth_flow_consis_loss(flow_diff_fwd, fwd_mask, 1)
         # loss_pack['loss_depth_flow_consis'] = self.compute_depth_flow_consis_loss(flow_diff_bwd, valid_masks_to_l, 1) + \
         #     self.compute_depth_flow_consis_loss(flow_diff_fwd, valid_masks_to_r, 1)
-        loss_pack['loss_depth_flow_consis'] = torch.zeros([2]).to(img_l.get_device()).requires_grad_()
+        # loss_pack['loss_depth_flow_consis'] = torch.zeros([2]).to(img_l.get_device()).requires_grad_()
 
         # loss_pack['loss_epipolar'] = self.compute_epipolar_loss(pose_vec_bwd,optical_flows_bwd[0],K_inv,bwd_mask[0]) + \
         #     self.compute_epipolar_loss(pose_vec_fwd,optical_flows_fwd[0],K_inv,fwd_mask[0])

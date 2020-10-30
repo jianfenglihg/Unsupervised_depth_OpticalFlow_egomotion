@@ -48,7 +48,7 @@ class KITTI_2012(KITTI_Prepared):
         img2 = cv2.imread(data['img2_dir'])
         img_hw_orig = (img1.shape[0], img1.shape[1])
         img = np.concatenate([img1, img2], 0)
-        img = self.preprocess_img(img, self.img_hw, is_test=True)
+        img = self.preprocess_img_origin(img, self.img_hw, is_test=True)
         img  = img.transpose(2,0,1)
 
         # load intrinsic

@@ -89,6 +89,15 @@ class KITTI_Prepared(torch.utils.data.Dataset):
         img = img / 255.0
         return img
 
+    def preprocess_img_origin(self, img, img_hw=None, is_test=False):
+        if img_hw is None:
+            img_hw = self.img_hw
+        img = self.resize_img_origin(img, img_hw)
+        if not is_test:
+            img = self.random_flip_img(img)
+        img = img / 255.0
+        return img
+
     def read_cam_intrinsic(self, fname):
         with open(fname, 'r') as f:
             lines = f.readlines()
