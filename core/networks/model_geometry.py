@@ -254,8 +254,7 @@ class Model_geometry(nn.Module):
         meshgrid = torch.from_numpy(meshgrid)
         return meshgrid
 
-    def compute_epipolar_loss(self, pose, flow, intrinsics_inverse, mask):
-
+    def compute_epipolar_loss(self, pose, flow, intrinsics, intrinsics_inverse, mask):
         b,_,h,w = flow.size()
         grid = self.meshgrid(h, w).float().to(flow.get_device()).unsqueeze(0).repeat(b,1,1,1) #[b,2,h,w]
         corres = torch.cat([(grid[:,0,:,:] + flow[:,0,:,:]).unsqueeze(1), (grid[:,1,:,:] + flow[:,1,:,:]).unsqueeze(1)], 1)
@@ -275,7 +274,7 @@ class Model_geometry(nn.Module):
         # compute fundmental matrix
         E = compute_essential_matrix(pose)
         F_meta = E.bmm(intrinsics_inverse)
-        F = intrinsics_inverse.permute([0, 2, 1]).bmm(F_meta)
+        F = torch.inverse(intrinsics.permute([0, 2, 1])).bmm(F_meta)  # T and then -1 
 
         epi_line = F.bmm(points1) # [b,3,n]
         dist_p2l = torch.abs((epi_line.permute([0, 2, 1]) * points2).sum(-1, keepdim=True)) # [b,n,1]
@@ -291,10 +290,134 @@ class Model_geometry(nn.Module):
     def compute_pnp_loss(self, depth, flow, pose):
 
         return None
-    
-    def compute_triangulate_loss(self, flow, pose, depth):
 
-        return None
+    
+    def midpoint_triangulate(self, flow, K, K_inv, P1, P2):
+        # match: [b, 4, num] P1: [b, 3, 4]
+        # Match is in the image coordinates. P1, P2 is camera parameters. [B, 3, 4] match: [B, M, 4]
+        b,_,h,w = flow.size()
+        grid = self.meshgrid(h, w).float().to(flow.get_device()).unsqueeze(0).repeat(b,1,1,1) #[b,2,h,w]
+        corres = torch.cat([(grid[:,0,:,:] + flow[:,0,:,:]).unsqueeze(1), (grid[:,1,:,:] + flow[:,1,:,:]).unsqueeze(1)], 1)
+        match = torch.cat([grid, corres], 1) # [b,4,h,w]
+        match = match.view([b,4,-1]) # [b,4,n]
+
+        b, n = match.shape[0], match.shape[2]
+        RT1 = K_inv.bmm(P1) # [b, 3, 4]
+        RT2 = K_inv.bmm(P2)
+        ones = torch.ones([b,1,n]).to(match.get_device())
+        pts1 = torch.cat([match[:,:2,:], ones], 1)
+        pts2 = torch.cat([match[:,2:,:], ones], 1)
+        
+        ray1_dir = (RT1[:,:,:3].transpose(1,2)).bmm(K_inv).bmm(pts1)# [b,3,n]
+        ray1_dir = ray1_dir / (torch.norm(ray1_dir, dim=1, keepdim=True, p=2) + 1e-12)
+        ray1_origin = (-1) * RT1[:,:,:3].transpose(1,2).bmm(RT1[:,:,3].unsqueeze(-1)) # [b, 3, 1]
+        ray2_dir = (RT2[:,:,:3].transpose(1,2)).bmm(K_inv).bmm(pts2) # [b,3,n]
+        ray2_dir = ray2_dir / (torch.norm(ray2_dir, dim=1, keepdim=True, p=2) + 1e-12)
+        ray2_origin = (-1) * RT2[:,:,:3].transpose(1,2).bmm(RT2[:,:,3].unsqueeze(-1)) # [b, 3, 1]
+    
+        dir_cross = torch.cross(ray1_dir, ray2_dir, dim=1) # [b,3,n]
+        denom = 1.0 / (torch.sum(dir_cross * dir_cross, dim=1, keepdim=True)+1e-12) # [b,1,n]
+        origin_vec = (ray2_origin - ray1_origin).repeat(1,1,n) # [b,3,n]
+        a1 = origin_vec.cross(ray2_dir, dim=1) # [b,3,n]
+        a1 = torch.sum(a1 * dir_cross, dim=1, keepdim=True) * denom # [b,1,n]
+        a2 = origin_vec.cross(ray1_dir, dim=1) # [b,3,n]
+        a2 = torch.sum(a2 * dir_cross, dim=1, keepdim=True) * denom # [b,1,n]
+        p1 = ray1_origin + a1 * ray1_dir
+        p2 = ray2_origin + a2 * ray2_dir
+        point = (p1 + p2) / 2.0 # [b,3,n]
+        # Convert to homo coord to get consistent with other functions.
+        # point_homo = torch.cat([point, ones], dim=1).transpose(1,2) # [b,n,4]
+        return point
+
+
+    def get_reproj_fdp_loss(self, pred1, pred2, P2, K, K_inv, valid_mask, rigid_mask, flow, visualizer=None):
+        # pred: [b,1,h,w] Rt: [b,3,4] K: [b,3,3] mask: [b,1,h,w] flow: [b,2,h,w]
+        b, h, w = pred1.shape[0], pred1.shape[2], pred1.shape[3]
+        xy = self.meshgrid(h,w).unsqueeze(0).repeat(b,1,1,1).float().to(flow.get_device()) # [b,2,h,w]
+        ones = torch.ones([b,1,h,w]).float().to(flow.get_device())
+        pts1_3d = K_inv.bmm(torch.cat([xy, ones], 1).view([b,3,-1])) * pred1.view([b,1,-1]) # [b,3,h*w]
+        pts2_coord, pts2_depth = self.reproject(P2, torch.cat([pts1_3d, ones.view([b,1,-1])], 1).transpose(1,2)) # [b,h*w, 2]
+        # TODO Here some of the reprojection coordinates are invalid. (<0 or >max)
+        reproj_valid_mask = (pts2_coord > torch.Tensor([0,0]).to(pred1.get_device())).all(-1, True).float() * \
+            (pts2_coord < torch.Tensor([w-1,h-1]).to(pred1.get_device())).all(-1, True).float() # [b,h*w, 1]
+        reproj_valid_mask = (valid_mask * reproj_valid_mask.view([b,h,w,1]).permute([0,3,1,2])).detach()
+        rigid_mask = rigid_mask.detach()
+        pts2_depth = pts2_depth.transpose(1,2).view([b,1,h,w])
+
+        # Get the interpolated depth prediction2
+        pts2_coord_nor = torch.cat([2.0 * pts2_coord[:,:,0].unsqueeze(-1) / (w - 1.0) - 1.0, 2.0 * pts2_coord[:,:,1].unsqueeze(-1) / (h - 1.0) - 1.0], -1)
+        inter_depth2 = F.grid_sample(pred2, pts2_coord_nor.view([b, h, w, 2]), padding_mode='reflection') # [b,1,h,w]
+        pj_loss_map = (torch.abs(1.0 - pts2_depth / (inter_depth2 + 1e-12)) * rigid_mask * reproj_valid_mask)
+        pj_loss = pj_loss_map.mean((1,2,3)) / ((reproj_valid_mask * rigid_mask).mean((1,2,3))+1e-12)
+        #pj_loss = (valid_mask * mask * torch.abs(pts2_depth - inter_depth2) / (torch.abs(pts2_depth + inter_depth2)+1e-12)).mean((1,2,3)) / ((valid_mask * mask).mean((1,2,3))+1e-12) # [b]
+        flow_loss = (rigid_mask * torch.abs(flow + xy - pts2_coord.detach().permute(0,2,1).view([b,2,h,w]))).mean((1,2,3)) / (rigid_mask.mean((1,2,3)) + 1e-12)
+        return pj_loss, flow_loss
+
+    def reproject(self, P, point3d):
+        # P: [b,3,4] point3d: [b,n,4]
+        point2d = P.bmm(point3d.transpose(1,2)) # [b,4,n]
+        point2d_coord = (point2d[:,:2,:] / (point2d[:,2,:].unsqueeze(1) + 1e-12)).transpose(1,2) # [b,n,2]
+        point2d_depth = point2d[:,2,:].unsqueeze(1).transpose(1,2) # [b,n,1]
+        return point2d_coord, point2d_depth
+
+    def affine_adapt(self, depth1, depth2, use_translation=True, eps=1e-12):
+        a_scale = self.scale_adapt(depth1, depth2, eps=eps)
+        if not use_translation: # only fit the scale parameter
+            return a_scale, torch.zeros_like(a_scale)
+        else:
+            with torch.no_grad():
+                A = torch.sum((depth1 ** 2) / (depth2 ** 2 + eps), dim=1) # [b,1]
+                B = torch.sum(depth1 / (depth2 ** 2 + eps), dim=1) # [b,1]
+                C = torch.sum(depth1 / (depth2 + eps), dim=1) # [b,1]
+                D = torch.sum(1.0 / (depth2 ** 2 + eps), dim=1) # [b,1]
+                E = torch.sum(1.0 / (depth2 + eps), dim=1) # [b,1]
+                a = (B*E - D*C) / (B*B - A*D + 1e-12)
+                b = (B*C - A*E) / (B*B - A*D + 1e-12)
+
+                # check ill condition
+                cond = (B*B - A*D)
+                valid = (torch.abs(cond) > 1e-4).float()
+                a = a * valid + a_scale * (1 - valid)
+                b = b * valid
+            return a, b
+
+    def register_depth(self, depth_pred, coord_tri, depth_tri):
+        # depth_pred: [b, 1, h, w] coord_tri: [b,n,2] depth_tri: [b,n,1]
+        batch, _, h, w = depth_pred.shape[0], depth_pred.shape[1], depth_pred.shape[2], depth_pred.shape[3]
+        n = depth_tri.shape[1]
+        coord_tri_nor = torch.stack([2.0*coord_tri[:,:,0] / (w-1.0) - 1.0, 2.0*coord_tri[:,:,1] / (h-1.0) - 1.0], -1)
+        depth_inter = F.grid_sample(depth_pred, coord_tri_nor.view([batch,n,1,2]), padding_mode='reflection').squeeze(-1).transpose(1,2) # [b,n,1]
+
+        # Normalize
+        scale = torch.median(depth_inter, 1)[0] / (torch.median(depth_tri, 1)[0] + 1e-12)
+        scale = scale.detach() # [b,1]
+        scale_depth_inter = depth_inter / (scale.unsqueeze(-1) + 1e-12)
+        scale_depth_pred = depth_pred / (scale.unsqueeze(-1).unsqueeze(-1) + 1e-12)
+        
+        # affine adapt
+        a, b = self.affine_adapt(scale_depth_inter, depth_tri, use_translation=False)
+        affine_depth_inter = a.unsqueeze(1) * scale_depth_inter + b.unsqueeze(1) # [b,n,1]
+        affine_depth_pred = a.unsqueeze(-1).unsqueeze(-1) * scale_depth_pred + b.unsqueeze(-1).unsqueeze(-1) # [b,1,h,w]
+        return affine_depth_pred, affine_depth_inter
+    
+    def get_trian_loss(self, tri_depth, pred_tri_depth):
+        # depth: [b,n,1]
+        loss = torch.pow(1.0 - pred_tri_depth / (tri_depth + 1e-12), 2).mean((1,2))
+        return loss
+
+
+    def compute_triangulate_loss(self, flow, pose, K, K_inv, depth_pred1, depth_pred2):
+        P1, P2 = compute_projection_matrix(pose,K)
+        triangulated_point = self.midpoint_triangulate(flow,K,K_inv,P1,P2)
+        point2d_1_coord, point2d_1_depth = self.reproject(P1, triangulated_point) # [b,n,2], [b,n,1]
+        point2d_2_coord, point2d_2_depth = self.reproject(P2, triangulated_point)
+
+        rescaled_pred1, inter_pred1 = self.register_depth(depth_pred1, point2d_1_coord, point2d_1_depth)
+        rescaled_pred2, inter_pred2 = self.register_depth(depth_pred2, point2d_2_coord, point2d_2_depth)
+
+        pt_depth_loss = self.get_trian_loss(point2d_1_depth, inter_pred1) + self.get_trian_loss(point2d_2_depth, inter_pred2)
+        pj_depth, flow_loss = self.get_reproj_fdp_loss(rescaled_pred1, rescaled_pred2, P2, K, K_inv, img1_valid_mask, img1_rigid_mask, fwd_flow, visualizer=visualizer)
+        return pt_depth_loss + pj_depth + flow_loss
 
     def compute_dynamic_mask(self, intrinsics, depth, pose, flow):
         depth_0 = depth[0]
@@ -467,8 +590,8 @@ class Model_geometry(nn.Module):
         #     self.compute_depth_flow_consis_loss(flow_diff_fwd, valid_masks_to_r, 1)
         # loss_pack['loss_depth_flow_consis'] = torch.zeros([2]).to(img_l.get_device()).requires_grad_()
 
-        loss_pack['loss_epipolar'] = self.compute_epipolar_loss(pose_vec_bwd,optical_flows_bwd[0],K_inv,bwd_mask[0]) + \
-            self.compute_epipolar_loss(pose_vec_fwd,optical_flows_fwd[0],K_inv,fwd_mask[0])
+        loss_pack['loss_epipolar'] = self.compute_epipolar_loss(pose_vec_bwd,optical_flows_bwd[0],K,K_inv,bwd_mask[0]) + \
+            self.compute_epipolar_loss(pose_vec_fwd,optical_flows_fwd[0],K,K_inv,fwd_mask[0])
         # loss_pack['loss_epipolar'] = torch.zeros([2]).to(img_l.get_device()).requires_grad_()
 
         return loss_pack

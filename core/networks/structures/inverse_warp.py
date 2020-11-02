@@ -361,3 +361,13 @@ def compute_essential_matrix(vec, rotation_mode='euler'):
     skewsymmetric_mat = skewsymmetric(translation) # [B 3 3]
     essential_mat = skewsymmetric_mat.bmm(rot_mat)
     return essential_mat
+
+def compute_projection_matrix(vec, K, rotation_mode='euler'):
+    iden = torch.cat([torch.eye(3), torch.zeros([3,1])], -1).unsqueeze(0).repeat(b,1,1).to(K.get_device()) # [b,3,4]
+    P1 = K.bmm(iden)
+    pose_mat = pose_vec2mat(vec, rotation_mode)  # [B,3,4]
+    # Get projection matrix for tgt camera frame to source pixel frame
+    P2 = K @ pose_mat  # [B, 3, 4]
+
+    return P1, P2
+
