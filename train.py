@@ -55,11 +55,19 @@ def train(cfg):
     model = model.cuda()
 
     ## fix some layer when training
-    # for k,v in model.named_parameters():
-    #     if k.find('pwc') != -1 or k.find('fpyramid') != -1:
-    #         print(k)
-    #         v.requires_grad = False
+    if cfg.fix_flow:
+        for k,v in model.named_parameters():
+            if k.find('pwc') != -1 or k.find('fpyramid') != -1:
+                print(k)
+                v.requires_grad = False
 
+    if cfg.fix_depth_pose:
+        for k,v in model.named_parameters():
+            if k.find('depth') != -1 or k.find('pose') != -1:
+                print(k)
+                v.requires_grad = False
+
+    
     optimizer = torch.optim.Adam([{'params': filter(lambda p: p.requires_grad, model.parameters()), 'lr': cfg.lr}])
 
     # Load Pretrained Models
@@ -178,6 +186,9 @@ if __name__ == '__main__':
     arg_parser.add_argument('--resume', action='store_true', help='to resume training.')
     arg_parser.add_argument('--multi_gpu', action='store_true', help='to use multiple gpu for training.')
     arg_parser.add_argument('--no_test', action='store_true', help='without evaluation.')
+    arg_parser.add_argument('--fix_depth_pose', action='store_true', help='fix depth and pose network')
+    arg_parser.add_argument('--fix_flow', action='store_true', help='fix optical flow network')
+
     args = arg_parser.parse_args()
         #args.config_file = 'config/debug.yaml'
     if args.config_file is None:

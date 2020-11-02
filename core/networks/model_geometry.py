@@ -467,8 +467,8 @@ class Model_geometry(nn.Module):
         #     self.compute_depth_flow_consis_loss(flow_diff_fwd, valid_masks_to_r, 1)
         # loss_pack['loss_depth_flow_consis'] = torch.zeros([2]).to(img_l.get_device()).requires_grad_()
 
-        # loss_pack['loss_epipolar'] = self.compute_epipolar_loss(pose_vec_bwd,optical_flows_bwd[0],K_inv,bwd_mask[0]) + \
-        #     self.compute_epipolar_loss(pose_vec_fwd,optical_flows_fwd[0],K_inv,fwd_mask[0])
-        loss_pack['loss_epipolar'] = torch.zeros([2]).to(img_l.get_device()).requires_grad_()
+        loss_pack['loss_epipolar'] = self.compute_epipolar_loss(pose_vec_bwd,optical_flows_bwd[0],K_inv,bwd_mask[0]) + \
+            self.compute_epipolar_loss(pose_vec_fwd,optical_flows_fwd[0],K_inv,fwd_mask[0])
+        # loss_pack['loss_epipolar'] = torch.zeros([2]).to(img_l.get_device()).requires_grad_()
 
         return loss_pack

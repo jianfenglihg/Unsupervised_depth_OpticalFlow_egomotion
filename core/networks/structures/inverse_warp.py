@@ -312,7 +312,19 @@ def calculate_rigid_flow(depth, pose, intrinsics):
 
     batch_size, _, height, width = depth.size()
 
-    grid = meshgrid(height, width).float().to(depth.get_device()).unsqueeze(0).repeat(batch_size,1,1,1) # B 2 H W
+    # grid = meshgrid(height, width).float().to(depth.get_device()).unsqueeze(0).repeat(batch_size,1,1,1) # B 2 H W
+
+    B = batch_size
+    H = height
+    W = width
+
+    # mesh grid 
+    xx = torch.arange(0, W).view(1,-1).repeat(H,1)
+    yy = torch.arange(0, H).view(-1,1).repeat(1,W)
+    xx = xx.view(1,1,H,W).repeat(B,1,1,1)
+    yy = yy.view(1,1,H,W).repeat(B,1,1,1)
+    grid = torch.cat((xx,yy),1).float()
+    grid = grid.to(depth.get_device())
 
     cam_coords = pixel2cam(depth.squeeze(1), intrinsics.inverse())  # [B,3,H,W]
 
