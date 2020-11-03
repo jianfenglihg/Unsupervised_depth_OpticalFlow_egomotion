@@ -22,13 +22,19 @@ class Model_geometry(nn.Module):
 
         self.dataset = cfg.dataset
         self.num_scales = cfg.num_scales
+        
         self.flow_consist_alpha = cfg.flow_consist_alpha
         self.flow_consist_beta = cfg.flow_consist_beta
+        
         self.depth_net = Depth_Model(cfg.num_scales)
         self.pose_net = PoseCNN(cfg.num_input_frames)
         self.fpyramid = FeaturePyramid()
         self.pwc_model = PWC_tf()
-
+        
+        self.PnP_ransac_iter = 1000
+        self.PnP_ransac_thre = 1
+        self.PnP_ransac_times = 5
+    
     def get_flow_norm(self, flow, p=2):
         '''
         Inputs:
@@ -287,7 +293,34 @@ class Model_geometry(nn.Module):
         loss = (dist_map * mask.transpose(1,2)).mean([1,2]) / mask.mean([1,2])
         return loss
 
-    def compute_pnp_loss(self, depth, flow, pose):
+    def compute_pnp_loss(self, depth, flow, pose, K, K_inv):
+        # world point
+        b, h, w = depth.shape[0], depth.shape[2], depth.shape[3]
+        xy = self.meshgrid(h,w).unsqueeze(0).repeat(b,1,1,1).float().to(flow.get_device()) # [b,2,h,w]
+        ones = torch.ones([b,1,h,w]).float().to(flow.get_device())
+        pts_3d = K_inv.bmm(torch.cat([xy, ones], 1).view([b,3,-1])) * depth.view([b,1,-1]) # [b,3,h*w]
+        pts_3d = pts_3d.transpose(1,2) # [b,,n,3]
+
+        # image point
+        corres = torch.cat([(xy[:,0,:,:] + flow[:,0,:,:]).unsqueeze(1), (xy[:,1,:,:] + flow[:,1,:,:]).unsqueeze(1)], 1) # [b,2,h,w]
+        corres = corres.view([b,2,-1]).transpose(1,2) # [b,n,2]
+
+        poses = []
+        losses = []
+        for i in range(b):
+            pts_3d_ = pts_3d[i,:,:,:]
+            corres_ = corres[i,:,:,:]
+            K_ = K[i].cpu().detach().numpy() # [3,3]
+            K_inv_ = K_inv[i].cpu().detach().numpy()
+            pts_3d_ = pts_3d_.cpu().detach().numpy() # [n,3]
+            corres_ = corres_.cpu().detach().numpy() # [n,2]
+            # flag, r, t, inlier = cv2.solvePnP(objectPoints=pts_3d_, imagePoints=corres_, cameraMatrix=K_, distCoeffs=None, iterationsCount=self.PnP_ransac_iter, reprojectionError=self.PnP_ransac_thre)
+            retval,rvec,tvec = cv2.solvePnP(pts_3d_,corres_,K_)
+            pose = np.eye(4)
+            pose[:3,:3] = cv2.Rodrigues(rvec)[0]
+            pose[:3,3:] = tvec
+            poses.append(pose)
+            
 
         return None
 
