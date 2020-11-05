@@ -188,9 +188,9 @@ class Model_depth(nn.Module):
 
         loss_pack = {}
 
-        # loss_pack['loss_depth_pixel'] = self.compute_photometric_loss(img_list,reconstructed_imgs_from_l,valid_masks_to_l) + \
-        #     self.compute_photometric_loss(img_list,reconstructed_imgs_from_r,valid_masks_to_r)
-        loss_pack['loss_depth_pixel'] = self.compute_photometric_loss_min(img_list, reconstructed_imgs_from_l, reconstructed_imgs_from_r)
+        loss_pack['loss_depth_pixel'] = self.compute_photometric_loss(img_list,reconstructed_imgs_from_l,valid_masks_to_l) + \
+            self.compute_photometric_loss(img_list,reconstructed_imgs_from_r,valid_masks_to_r)
+        # loss_pack['loss_depth_pixel'] = self.compute_photometric_loss_min(img_list, reconstructed_imgs_from_l, reconstructed_imgs_from_r)
 
         loss_pack['loss_depth_ssim'] = self.compute_ssim_loss(img_list,reconstructed_imgs_from_l,valid_masks_to_l) + \
             self.compute_ssim_loss(img_list,reconstructed_imgs_from_r,valid_masks_to_r)
