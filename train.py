@@ -16,6 +16,8 @@ import shutil
 import pickle
 import pdb
 
+from tensorboardX import SummaryWriter
+
 def save_model(iter_, model_dir, filename, model, optimizer):
     torch.save({"iteration": iter_, "model_state_dict": model.state_dict(), 'optimizer_state_dict': optimizer.state_dict()}, os.path.join(model_dir, filename))
 
@@ -26,7 +28,7 @@ def load_model(model_dir, filename, model, optimizer):
     optimizer.load_state_dict(data['optimizer_state_dict'])
     return iter_, model, optimizer
 
-def train(cfg):
+def train(cfg, observer):
     # load model and optimizer
     model = get_model(cfg.mode)(cfg)
     if cfg.mode == 'geom':
@@ -61,9 +63,15 @@ def train(cfg):
                 print(k)
                 v.requires_grad = False
 
-    if cfg.fix_depth_pose:
+    if cfg.fix_depth:
         for k,v in model.named_parameters():
-            if k.find('depth') != -1 or k.find('pose') != -1:
+            if k.find('depth') != -1:
+                print(k)
+                v.requires_grad = False
+
+    if cfg.fix_pose:
+        for k,v in model.named_parameters():
+            if k.find('pose') != -1:
                 print(k)
                 v.requires_grad = False
 
@@ -142,13 +150,20 @@ def train(cfg):
                     eval_nyu_res = test_nyu(cfg, model_eval, test_images, test_gt_depths)
                     visualizer.add_log_pack({'eval_nyu_res': eval_nyu_res})
             visualizer.dump_log(os.path.join(cfg.model_dir, 'log.pkl'))
+
+        
         model.train()
         iter_ = iter_ + cfg.iter_start
         optimizer.zero_grad()
+
         inputs = [k.cuda() for k in inputs]
         loss_pack = model(inputs)
+
         if iter_ % cfg.log_interval == 0:
             visualizer.print_loss(loss_pack, iter_=iter_)
+
+        # if iter_ and iter_ % cfg.vis_interval == 0:
+            # observer.add
 
         loss_list = []
         for key in list(loss_pack.keys()):
@@ -186,7 +201,8 @@ if __name__ == '__main__':
     arg_parser.add_argument('--resume', action='store_true', help='to resume training.')
     arg_parser.add_argument('--multi_gpu', action='store_true', help='to use multiple gpu for training.')
     arg_parser.add_argument('--no_test', action='store_true', help='without evaluation.')
-    arg_parser.add_argument('--fix_depth_pose', action='store_true', help='fix depth and pose network')
+    arg_parser.add_argument('--fix_depth', action='store_true', help='fix depth network')
+    arg_parser.add_argument('--fix_pose', action='store_true', help='fix pose network')
     arg_parser.add_argument('--fix_flow', action='store_true', help='fix optical flow network')
 
     args = arg_parser.parse_args()
@@ -231,6 +247,10 @@ if __name__ == '__main__':
     with open(os.path.join(args.model_dir, 'config.pkl'), 'wb') as f:
         pickle.dump(cfg_new, f)
 
+    # visualizer
+    visualizer = SummaryWriter()
+    
+
     # main function 
-    train(cfg_new)
+    train(cfg_new, visualizer)
 

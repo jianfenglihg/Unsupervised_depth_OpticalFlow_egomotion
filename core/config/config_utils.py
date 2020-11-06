@@ -15,6 +15,8 @@ def generate_loss_weights_dict(cfg):
 
     weight_dict['loss_depth_flow_consis'] = cfg.w_depth_flow_consis
     weight_dict['loss_epipolar'] = cfg.w_epipolar
+    weight_dict['loss_triangle'] = cfg.w_triangle
+    weight_dict['loss_pnp'] = cfg.w_pnp
 
     return weight_dict
 

@@ -46,20 +46,9 @@ class Visualizer(object):
         if 'loss_depth_flow_consis' in loss_pack.keys():
             loss_depth_flow_consis = loss_pack['loss_depth_flow_consis'].mean().detach().cpu().numpy()
             loss_epipolar = loss_pack['loss_epipolar'].mean().detach().cpu().numpy()
-            print('iter: {2}, loss_epipolar: {1:.6f}, loss_depth_flow_consis: {0:.6f}'.format(loss_depth_flow_consis, loss_epipolar, iter_))
-
-        # if 'pt_depth_loss' in loss_pack.keys():
-        #     loss_pt_depth = loss_pack['pt_depth_loss'].mean().detach().cpu().numpy()
-        #     loss_pj_depth = loss_pack['pj_depth_loss'].mean().detach().cpu().numpy()
-        #     loss_depth_smooth = loss_pack['depth_smooth_loss'].mean().detach().cpu().numpy()
-        #     str_= ('iter: {0}, loss_pixel: {1:.6f}, loss_ssim: {2:.6f}, loss_pt_depth: {3:.6f}, loss_pj_depth: {4:.6f}, loss_depth_smooth: {5:.6f}'.format(\
-        #         iter_, loss_pixel, loss_ssim, loss_pt_depth, loss_pj_depth, loss_depth_smooth))
-        #     if self.use_flow_error:
-        #         loss_flow_error = loss_pack['flow_error'].mean().detach().cpu().numpy()
-        #         str_ = str_ + ', loss_flow_error: {0:.6f}'.format(loss_flow_error)
-        #     print(str_)
-        # else:
-        #     print('iter: {4}, loss_pixel: {0:.6f}, loss_ssim: {1:.6f}, loss_flow_smooth: {2:.6f}, loss_flow_consis: {3:.6f}'.format(loss_pixel, loss_ssim, loss_flow_smooth, loss_flow_consis, iter_))
+            loss_triangle = loss_pack['loss_triangle'].mean().detach().cpu().numpy()
+            loss_pnp = loss_pack['loss_pnp'].mean().detach().cpu().numpy()
+            print('iter: {4}, loss_pnp: {3:.6f}, loss_triangle: {2:.6f}, loss_epipolar: {1:.6f}, loss_depth_flow_consis: {0:.6f}'.format(loss_depth_flow_consis, loss_epipolar, loss_triangle, loss_pnp, iter_))
 
 class Visualizer_debug():
     def __init__(self, dump_dir=None, img1=None, img2=None):

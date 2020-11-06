@@ -294,6 +294,8 @@ class Model_geometry(nn.Module):
         return loss
 
     def compute_pnp_loss(self, depth, flow, pose_vec, K, K_inv):
+        depth = depth[0]
+        flow = flow[0]
         # world point
         b, h, w = depth.shape[0], depth.shape[2], depth.shape[3]
         xy = self.meshgrid(h,w).unsqueeze(0).repeat(b,1,1,1).float().to(flow.get_device()) # [b,2,h,w]
@@ -305,16 +307,18 @@ class Model_geometry(nn.Module):
         corres = torch.cat([(xy[:,0,:,:] + flow[:,0,:,:]).unsqueeze(1), (xy[:,1,:,:] + flow[:,1,:,:]).unsqueeze(1)], 1) # [b,2,h,w]
         corres = corres.view([b,2,-1]).transpose(1,2) # [b,n,2]
 
+        dist_coeffs = np.zeros((4, 1))
+
         losses = []
         for i in range(b):
-            pts_3d_ = pts_3d[i,:,:,:]
-            corres_ = corres[i,:,:,:]
+            pts_3d_ = pts_3d[i,:,:]
+            corres_ = corres[i,:,:]
             K_ = K[i].cpu().detach().numpy() # [3,3]
             pts_3d_ = pts_3d_.cpu().detach().numpy() # [n,3]
             corres_ = corres_.cpu().detach().numpy() # [n,2]
             # flag, r, t, inlier = cv2.solvePnP(objectPoints=pts_3d_, imagePoints=corres_, cameraMatrix=K_, distCoeffs=None, iterationsCount=self.PnP_ransac_iter, reprojectionError=self.PnP_ransac_thre)
-            retval,rvec,tvec = cv2.solvePnP(pts_3d_,corres_,K_)
-            tvec = torch.from_numpy(tvec).to(flow.get_device())
+            retval,rvec,tvec = cv2.solvePnP(pts_3d_,corres_,K_,dist_coeffs)
+            tvec = torch.from_numpy(tvec).float().to(flow.get_device())
             pose_tvec = pose_vec[i,:3]
             loss = torch.abs(tvec-pose_tvec).mean(1)
             losses.append(loss)
@@ -355,8 +359,8 @@ class Model_geometry(nn.Module):
         p2 = ray2_origin + a2 * ray2_dir
         point = (p1 + p2) / 2.0 # [b,3,n]
         # Convert to homo coord to get consistent with other functions.
-        # point_homo = torch.cat([point, ones], dim=1).transpose(1,2) # [b,n,4]
-        return point
+        point_homo = torch.cat([point, ones], dim=1).transpose(1,2) # [b,n,4]
+        return point_homo
 
 
     def get_reproj_fdp_loss(self, pred1, pred2, P2, K, K_inv, valid_mask, rigid_mask, flow, visualizer=None):
@@ -388,6 +392,13 @@ class Model_geometry(nn.Module):
         point2d_coord = (point2d[:,:2,:] / (point2d[:,2,:].unsqueeze(1) + 1e-12)).transpose(1,2) # [b,n,2]
         point2d_depth = point2d[:,2,:].unsqueeze(1).transpose(1,2) # [b,n,1]
         return point2d_coord, point2d_depth
+    
+    def scale_adapt(self, depth1, depth2, eps=1e-12):
+        with torch.no_grad():
+            A = torch.sum((depth1 ** 2) / (depth2 ** 2 + eps), dim=1) # [b,1]
+            C = torch.sum(depth1 / (depth2 + eps), dim=1) # [b,1]
+            a = C / (A + eps)
+        return a
 
     def affine_adapt(self, depth1, depth2, use_translation=True, eps=1e-12):
         a_scale = self.scale_adapt(depth1, depth2, eps=eps)
@@ -436,17 +447,21 @@ class Model_geometry(nn.Module):
 
 
     def compute_triangulate_loss(self, flow, pose, K, K_inv, depth_pred1, depth_pred2):
+        flow = flow[0]
+        depth_pred1 = depth_pred1[0]
+        # depth_pred2 = depth_pred2[0]
+        
         P1, P2 = compute_projection_matrix(pose,K)
-        triangulated_point = self.midpoint_triangulate(flow,K,K_inv,P1,P2)
+        triangulated_point = self.midpoint_triangulate(flow,K,K_inv,P1,P2) # [b,n,4]
         point2d_1_coord, point2d_1_depth = self.reproject(P1, triangulated_point) # [b,n,2], [b,n,1]
-        point2d_2_coord, point2d_2_depth = self.reproject(P2, triangulated_point)
+        #point2d_2_coord, point2d_2_depth = self.reproject(P2, triangulated_point)
 
         rescaled_pred1, inter_pred1 = self.register_depth(depth_pred1, point2d_1_coord, point2d_1_depth)
-        rescaled_pred2, inter_pred2 = self.register_depth(depth_pred2, point2d_2_coord, point2d_2_depth)
+        #rescaled_pred2, inter_pred2 = self.register_depth(depth_pred2, point2d_2_coord, point2d_2_depth)
 
-        pt_depth_loss = self.get_trian_loss(point2d_1_depth, inter_pred1) + self.get_trian_loss(point2d_2_depth, inter_pred2)
-        pj_depth, flow_loss = self.get_reproj_fdp_loss(rescaled_pred1, rescaled_pred2, P2, K, K_inv, img1_valid_mask, img1_rigid_mask, fwd_flow, visualizer=visualizer)
-        return pt_depth_loss + pj_depth + flow_loss
+        pt_depth_loss = self.get_trian_loss(point2d_1_depth, inter_pred1)# + self.get_trian_loss(point2d_2_depth, inter_pred2)
+        # pj_depth, flow_loss = self.get_reproj_fdp_loss(rescaled_pred1, rescaled_pred2, P2, K, K_inv, img1_valid_mask, img1_rigid_mask, fwd_flow, visualizer=visualizer)
+        return pt_depth_loss # + pj_depth + flow_loss
 
     def compute_dynamic_mask(self, intrinsics, depth, pose, flow):
         depth_0 = depth[0]
@@ -622,5 +637,13 @@ class Model_geometry(nn.Module):
         loss_pack['loss_epipolar'] = self.compute_epipolar_loss(pose_vec_bwd,optical_flows_bwd[0],K,K_inv,bwd_mask[0]) + \
             self.compute_epipolar_loss(pose_vec_fwd,optical_flows_fwd[0],K,K_inv,fwd_mask[0])
         # loss_pack['loss_epipolar'] = torch.zeros([2]).to(img_l.get_device()).requires_grad_()
+
+        # loss_pack['loss_triangle'] = self.compute_triangulate_loss(optical_flows_bwd, pose_vec_bwd, K, K_inv, disp_list, disp_l_list) + \
+        #     self.compute_triangulate_loss(optical_flows_fwd, pose_vec_fwd, K, K_inv, disp_list, disp_r_list)
+        loss_pack['loss_triangle'] = torch.zeros([2]).to(img_l.get_device()).requires_grad_()
+
+        loss_pack['loss_pnp'] = self.compute_pnp_loss(disp_list, optical_flows_bwd, pose_vec_bwd, K, K_inv) + \
+            self.compute_pnp_loss(disp_list, optical_flows_fwd, pose_vec_fwd, K, K_inv)
+        # loss_pack['loss_pnp'] = torch.zeros([2]).to(img_l.get_device()).requires_grad_()
 
         return loss_pack

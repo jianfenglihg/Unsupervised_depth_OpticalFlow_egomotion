@@ -363,6 +363,7 @@ def compute_essential_matrix(vec, rotation_mode='euler'):
     return essential_mat
 
 def compute_projection_matrix(vec, K, rotation_mode='euler'):
+    b,_,_ = K.size()
     iden = torch.cat([torch.eye(3), torch.zeros([3,1])], -1).unsqueeze(0).repeat(b,1,1).to(K.get_device()) # [b,3,4]
     P1 = K.bmm(iden)
     pose_mat = pose_vec2mat(vec, rotation_mode)  # [B,3,4]
