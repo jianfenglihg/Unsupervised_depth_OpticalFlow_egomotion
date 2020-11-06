@@ -293,7 +293,7 @@ class Model_geometry(nn.Module):
         loss = (dist_map * mask.transpose(1,2)).mean([1,2]) / mask.mean([1,2])
         return loss
 
-    def compute_pnp_loss(self, depth, flow, pose, K, K_inv):
+    def compute_pnp_loss(self, depth, flow, pose_vec, K, K_inv):
         # world point
         b, h, w = depth.shape[0], depth.shape[2], depth.shape[3]
         xy = self.meshgrid(h,w).unsqueeze(0).repeat(b,1,1,1).float().to(flow.get_device()) # [b,2,h,w]
@@ -305,24 +305,20 @@ class Model_geometry(nn.Module):
         corres = torch.cat([(xy[:,0,:,:] + flow[:,0,:,:]).unsqueeze(1), (xy[:,1,:,:] + flow[:,1,:,:]).unsqueeze(1)], 1) # [b,2,h,w]
         corres = corres.view([b,2,-1]).transpose(1,2) # [b,n,2]
 
-        poses = []
         losses = []
         for i in range(b):
             pts_3d_ = pts_3d[i,:,:,:]
             corres_ = corres[i,:,:,:]
             K_ = K[i].cpu().detach().numpy() # [3,3]
-            K_inv_ = K_inv[i].cpu().detach().numpy()
             pts_3d_ = pts_3d_.cpu().detach().numpy() # [n,3]
             corres_ = corres_.cpu().detach().numpy() # [n,2]
             # flag, r, t, inlier = cv2.solvePnP(objectPoints=pts_3d_, imagePoints=corres_, cameraMatrix=K_, distCoeffs=None, iterationsCount=self.PnP_ransac_iter, reprojectionError=self.PnP_ransac_thre)
             retval,rvec,tvec = cv2.solvePnP(pts_3d_,corres_,K_)
-            pose = np.eye(4)
-            pose[:3,:3] = cv2.Rodrigues(rvec)[0]
-            pose[:3,3:] = tvec
-            poses.append(pose)
-            
-
-        return None
+            tvec = torch.from_numpy(tvec).to(flow.get_device())
+            pose_tvec = pose_vec[i,:3]
+            loss = torch.abs(tvec-pose_tvec).mean(1)
+            losses.append(loss)
+        return torch.cat(losses, 0).sum(0) 
 
     
     def midpoint_triangulate(self, flow, K, K_inv, P1, P2):
