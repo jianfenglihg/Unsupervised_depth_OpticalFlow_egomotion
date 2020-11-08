@@ -157,7 +157,7 @@ def train(cfg, observer):
         optimizer.zero_grad()
 
         inputs = [k.cuda() for k in inputs]
-        loss_pack = model(inputs)
+        loss_pack, mask_pack = model(inputs)
 
         if iter_ % cfg.log_interval == 0:
             visualizer.print_loss(loss_pack, iter_=iter_)
@@ -167,6 +167,24 @@ def train(cfg, observer):
             observer.add_scalar('depth_ssim_loss', loss_pack['loss_depth_ssim'].mean().detach().cpu().numpy(), iter_)
             observer.add_scalar('depth_smooth_loss', loss_pack['loss_depth_smooth'].mean().detach().cpu().numpy(), iter_)
             observer.add_scalar('depth_consis_loss', loss_pack['loss_depth_consis'].mean().detach().cpu().numpy(), iter_)
+            
+            observer.add_scalar('flow_photometric_loss', loss_pack['loss_flow_pixel'].mean().detach().cpu().numpy(), iter_)
+            observer.add_scalar('flow_ssim_loss', loss_pack['loss_flow_ssim'].mean().detach().cpu().numpy(), iter_)
+            observer.add_scalar('flow_smooth_loss', loss_pack['loss_flow_smooth'].mean().detach().cpu().numpy(), iter_)
+            observer.add_scalar('flow_consis_loss', loss_pack['loss_flow_consis'].mean().detach().cpu().numpy(), iter_)
+
+            observer.add_scalar('depth_flow_consis', loss_pack['loss_depth_flow_consis'].mean().detach().cpu().numpy(), iter_)
+            observer.add_scalar('epipolar', loss_pack['loss_epipolar'].mean().detach().cpu().numpy(), iter_)
+            observer.add_scalar('pnp', loss_pack['loss_pnp'].mean().detach().cpu().numpy(), iter_)
+            observer.add_scalar('triangulate', loss_pack['loss_triangle'].mean().detach().cpu().numpy(), iter_)
+
+            # mask image
+        if iter_ and iter_ % (cfg.vis_interval*10) == 0:
+            observer.add_image('origin_middle_image', mask_pack['origin_middle_image'], iter_)
+            observer.add_image('occ_fwd_mask', mask_pack['occ_fwd_mask'], iter_)
+            observer.add_image('dyna_fwd_mask', mask_pack['dyna_fwd_mask'], iter_)
+            observer.add_image('valid_fwd_mask', mask_pack['valid_fwd_mask'], iter_)
+            
 
         loss_list = []
         for key in list(loss_pack.keys()):
@@ -196,6 +214,7 @@ if __name__ == '__main__':
     arg_parser.add_argument('--log_interval', type=int, default=100, help='interval for printing loss.')
     arg_parser.add_argument('--test_interval', type=int, default=2000, help='interval for evaluation.')
     arg_parser.add_argument('--save_interval', type=int, default=2000, help='interval for saving models.')
+    arg_parser.add_argument('--vis_interval', type=int, default=2, help='interval for tensorboard models.')
     arg_parser.add_argument('--mode', type=str, default='flow', help='training mode.')
     arg_parser.add_argument('--model_dir', type=str, default=None, help='directory for saving models')
     arg_parser.add_argument('--prepared_save_dir', type=str, default='data_s1', help='directory name for generated training dataset')

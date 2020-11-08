@@ -591,7 +591,12 @@ class Model_geometry(nn.Module):
 
         # loss function
         loss_pack = {}
+        mask_pack = {}
         
+        mask_pack['occ_fwd_mask'] = 255*occ_mask_fwd[0][0].cpu().detach().numpy().astype(np.uint8)
+        mask_pack['dyna_fwd_mask'] = 255*dynamic_masks_fwd[0][0].cpu().detach().numpy().astype(np.uint8)
+        mask_pack['valid_fwd_mask'] = 255*valid_masks_to_r[0][0].cpu().detach().numpy().astype(np.uint8)
+        mask_pack['origin_middle_image'] = img[0].cpu().detach().numpy()
 
         # depth and pose
         loss_pack['loss_depth_pixel'] = self.compute_photometric_loss(img_list,reconstructed_imgs_from_l,bwd_mask) + \
@@ -646,4 +651,4 @@ class Model_geometry(nn.Module):
             self.compute_pnp_loss(disp_list, optical_flows_fwd, pose_vec_fwd, K, K_inv)
         # loss_pack['loss_pnp'] = torch.zeros([2]).to(img_l.get_device()).requires_grad_()
 
-        return loss_pack
+        return loss_pack, mask_pack
