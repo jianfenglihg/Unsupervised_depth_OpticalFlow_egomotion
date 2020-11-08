@@ -293,6 +293,29 @@ class Model_geometry(nn.Module):
         loss = (dist_map * mask.transpose(1,2)).mean([1,2]) / mask.mean([1,2])
         return loss
 
+    def pnp(self, pts2d, pts3d, K, ini_pose=None):
+            bs = pts2d.size(0)
+            n = pts2d.size(1)
+            device = pts2d.device
+            K_np = np.array(K.detach().cpu())
+            P_6d = torch.zeros(bs,6,device=device)
+
+            for i in range(bs):
+                pts2d_i_np = np.ascontiguousarray(pts2d[i].detach().cpu()).reshape((n,1,2))
+                pts3d_i_np = np.ascontiguousarray(pts3d[i].detach().cpu()).reshape((n,3))
+                if ini_pose is None:
+                    _, rvec0, T0, _ = cv2.solvePnPRansac(objectPoints=pts3d_i_np, imagePoints=pts2d_i_np, cameraMatrix=K_np, distCoeffs=None, flags=cv.SOLVEPNP_ITERATIVE, confidence=0.9999 ,reprojectionError=1)
+                else:
+                    rvec0 = np.array(ini_pose[i, 0:3].cpu().view(3, 1))
+                    T0 = np.array(ini_pose[i, 3:6].cpu().view(3, 1))
+                _, rvec, T = cv2.solvePnP(objectPoints=pts3d_i_np, imagePoints=pts2d_i_np, cameraMatrix=K_np, distCoeffs=None, flags=cv.SOLVEPNP_ITERATIVE, useExtrinsicGuess=True, rvec=rvec0, tvec=T0)
+                angle_axis = torch.tensor(rvec,device=device,dtype=torch.float).view(1, 3)
+                T = torch.tensor(T,device=device,dtype=torch.float).view(1, 3)
+                P_6d[i,:] = torch.cat((T, angle_axis),dim=-1)
+
+            return P_6d
+
+
     def compute_pnp_loss(self, depth, flow, pose_vec, K, K_inv):
         depth = depth[0]
         flow = flow[0]
@@ -301,28 +324,37 @@ class Model_geometry(nn.Module):
         xy = self.meshgrid(h,w).unsqueeze(0).repeat(b,1,1,1).float().to(flow.get_device()) # [b,2,h,w]
         ones = torch.ones([b,1,h,w]).float().to(flow.get_device())
         pts_3d = K_inv.bmm(torch.cat([xy, ones], 1).view([b,3,-1])) * depth.view([b,1,-1]) # [b,3,h*w]
-        pts_3d = pts_3d.transpose(1,2) # [b,,n,3]
+        pts_3d = pts_3d.transpose(1,2) # [b,n,3]
 
         # image point
         corres = torch.cat([(xy[:,0,:,:] + flow[:,0,:,:]).unsqueeze(1), (xy[:,1,:,:] + flow[:,1,:,:]).unsqueeze(1)], 1) # [b,2,h,w]
         corres = corres.view([b,2,-1]).transpose(1,2) # [b,n,2]
 
-        dist_coeffs = np.zeros((4, 1))
+        # To Do: mask the unstatic point
 
-        losses = []
-        for i in range(b):
-            pts_3d_ = pts_3d[i,:,:]
-            corres_ = corres[i,:,:]
-            K_ = K[i].cpu().detach().numpy() # [3,3]
-            pts_3d_ = pts_3d_.cpu().detach().numpy() # [n,3]
-            corres_ = corres_.cpu().detach().numpy() # [n,2]
-            # flag, r, t, inlier = cv2.solvePnP(objectPoints=pts_3d_, imagePoints=corres_, cameraMatrix=K_, distCoeffs=None, iterationsCount=self.PnP_ransac_iter, reprojectionError=self.PnP_ransac_thre)
-            retval,rvec,tvec = cv2.solvePnP(pts_3d_,corres_,K_,dist_coeffs)
-            tvec = torch.from_numpy(tvec).float().to(flow.get_device())
-            pose_tvec = pose_vec[i,:3]
-            loss = torch.abs(tvec-pose_tvec).mean(1)
-            losses.append(loss)
-        return torch.cat(losses, 0).sum(0) 
+        # calculate pose by pnp
+        pose_pred = self.pnp(corres, pts_3d, K) # [b,6]
+
+        # TO DO: pose_net's loss function
+        loss = torch.abs(pose_vec - pose_pred).mean(1)
+
+        # dist_coeffs = np.zeros((4, 1))
+
+        # losses = []
+        # for i in range(b):
+        #     pts_3d_ = pts_3d[i,:,:]
+        #     corres_ = corres[i,:,:]
+        #     K_ = K[i].cpu().detach().numpy() # [3,3]
+        #     pts_3d_ = pts_3d_.cpu().detach().numpy() # [n,3]
+        #     corres_ = corres_.cpu().detach().numpy() # [n,2]
+        #     # flag, r, t, inlier = cv2.solvePnP(objectPoints=pts_3d_, imagePoints=corres_, cameraMatrix=K_, distCoeffs=None, iterationsCount=self.PnP_ransac_iter, reprojectionError=self.PnP_ransac_thre)
+        #     retval,rvec,tvec = cv2.solvePnP(pts_3d_,corres_,K_,dist_coeffs)
+        #     tvec = torch.from_numpy(tvec).float().to(flow.get_device())
+        #     pose_tvec = pose_vec[i,:3]
+        #     loss = torch.abs(tvec-pose_tvec).mean(1)
+        #     losses.append(loss)
+        # return torch.cat(losses, .sum(0)
+        return loss.sum(0) 
 
     
     def midpoint_triangulate(self, flow, K, K_inv, P1, P2):
