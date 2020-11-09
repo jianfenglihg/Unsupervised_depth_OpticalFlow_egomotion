@@ -584,11 +584,6 @@ class Model_geometry(nn.Module):
         bwd_mask_valid_occ = self.fusion_mask_occ_valid(valid_masks_to_l, occ_mask_bwd)
 
 
-
-        # cv2.imwrite('./meta/occ_mask.png', np.transpose(255*occ_mask_fwd[0][0].cpu().detach().numpy(), [1,2,0]).astype(np.uint8))
-        # cv2.imwrite('./meta/dyna_mask.png', np.transpose(255*dynamic_masks_fwd[0][0].cpu().detach().numpy(), [1,2,0]).astype(np.uint8))
-        # cv2.imwrite('./meta/valid_mask.png', np.transpose(255*valid_masks_to_r[0][0].cpu().detach().numpy(), [1,2,0]).astype(np.uint8))
-
         # loss function
         loss_pack = {}
         mask_pack = {}
