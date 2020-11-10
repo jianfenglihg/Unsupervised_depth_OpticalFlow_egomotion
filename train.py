@@ -183,9 +183,11 @@ def train(cfg, observer):
             observer.add_image('origin_middle_image', mask_pack['origin_middle_image'], iter_)
             observer.add_image('occ_fwd_mask', mask_pack['occ_fwd_mask'], iter_)
             observer.add_image('dyna_fwd_mask', mask_pack['dyna_fwd_mask'], iter_)
+            observer.add_image('rigid_fwd_mask', mask_pack['rigid_fwd_mask'], iter_)
             observer.add_image('valid_fwd_mask', mask_pack['valid_fwd_mask'], iter_)
+            observer.add_image('valid_occ_fwd_mask', mask_pack['valid_occ_fwd_mask'], iter_)
             
-
+            
         loss_list = []
         for key in list(loss_pack.keys()):
             loss_list.append((loss_weights_dict[key] * loss_pack[key].mean()).unsqueeze(0))
@@ -214,7 +216,7 @@ if __name__ == '__main__':
     arg_parser.add_argument('--log_interval', type=int, default=100, help='interval for printing loss.')
     arg_parser.add_argument('--test_interval', type=int, default=2000, help='interval for evaluation.')
     arg_parser.add_argument('--save_interval', type=int, default=2000, help='interval for saving models.')
-    arg_parser.add_argument('--vis_interval', type=int, default=2, help='interval for tensorboard models.')
+    arg_parser.add_argument('--vis_interval', type=int, default=50, help='interval for tensorboard models.')
     arg_parser.add_argument('--mode', type=str, default='flow', help='training mode.')
     arg_parser.add_argument('--model_dir', type=str, default=None, help='directory for saving models')
     arg_parser.add_argument('--prepared_save_dir', type=str, default='data_s1', help='directory name for generated training dataset')
