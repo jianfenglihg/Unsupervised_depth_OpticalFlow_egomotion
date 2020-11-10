@@ -34,6 +34,9 @@ class Model_geometry(nn.Module):
         self.PnP_ransac_iter = 1000
         self.PnP_ransac_thre = 1
         self.PnP_ransac_times = 5
+
+        self.inlier_thres = 0.1
+        self.rigid_thres = 0.5
     
     def get_flow_norm(self, flow, p=2):
         '''
@@ -107,7 +110,8 @@ class Model_geometry(nn.Module):
             # weight = Variable(weight.data,requires_grad=False)
 
             with torch.no_grad():
-                weight = 2*torch.exp(-(weight-0.5)**2/0.03).float()
+                weight = (weight > 0.48).float()
+                # weight = 2*torch.exp(-(weight-0.5)**2/0.03).float()
                 weight_bwd.append(torch.unsqueeze(weight[:,0,:,:],1))
                 weight_fwd.append(torch.unsqueeze(weight[:,1,:,:],1))
                 
@@ -260,13 +264,14 @@ class Model_geometry(nn.Module):
         meshgrid = torch.from_numpy(meshgrid)
         return meshgrid
 
-    def compute_epipolar_loss(self, pose, flow, intrinsics, intrinsics_inverse, mask):
+    def compute_epipolar_map(self, pose, flow, intrinsics, intrinsics_inverse):
         b,_,h,w = flow.size()
+        batch_size, flow_h, flow_w = flow.shape[0], flow.shape[2], flow.shape[3]
         grid = self.meshgrid(h, w).float().to(flow.get_device()).unsqueeze(0).repeat(b,1,1,1) #[b,2,h,w]
         corres = torch.cat([(grid[:,0,:,:] + flow[:,0,:,:]).unsqueeze(1), (grid[:,1,:,:] + flow[:,1,:,:]).unsqueeze(1)], 1)
         match = torch.cat([grid, corres], 1) # [b,4,h,w]
         match = match.view([b,4,-1]) # [b,4,n]
-        mask = mask.view([b,1,-1]) # [b,1,n] 
+        # mask = mask.view([b,1,-1]) # [b,1,n] 
 
         num_batch = match.shape[0]
         match_num = match.shape[-1]
@@ -289,9 +294,25 @@ class Model_geometry(nn.Module):
         b = epi_line[:,1,:].unsqueeze(1).transpose(1,2) # [b,n,1]
         dist_div = torch.sqrt(a*a + b*b) + 1e-6
         dist_map = dist_p2l / dist_div # [B, n, 1]
+        dist_map = dist_map.view([batch_size, flow_h, flow_w, 1])
+        dist_map = dist_map.squeeze().unsqueeze(1)
 
-        loss = (dist_map * mask.transpose(1,2)).mean([1,2]) / mask.mean([1,2])
+        # loss = (dist_map * mask.transpose(1,2)).mean([1,2]) / mask.mean([1,2])
+        return dist_map
+
+    def compute_epipolar_loss(self, dist_map, rigid_mask, inlier_mask):
+
+        loss = (dist_map * (rigid_mask - inlier_mask)).mean((1,2,3)) / \
+             (rigid_mask - inlier_mask).mean((1,2,3))
+
         return loss
+
+    def get_rigid_mask(self, dist_map):
+        with torch.no_grad():
+            rigid_mask = (dist_map < self.rigid_thres).float()
+            inlier_mask = (dist_map < self.inlier_thres).float()
+            rigid_score = rigid_mask * 1.0 / (1.0 + dist_map)
+        return rigid_mask, inlier_mask, rigid_score
 
     def pnp(self, pts2d, pts3d, K, ini_pose=None):
             bs = pts2d.size(0)
@@ -304,11 +325,11 @@ class Model_geometry(nn.Module):
                 pts2d_i_np = np.ascontiguousarray(pts2d[i].detach().cpu()).reshape((n,1,2))
                 pts3d_i_np = np.ascontiguousarray(pts3d[i].detach().cpu()).reshape((n,3))
                 if ini_pose is None:
-                    _, rvec0, T0, _ = cv2.solvePnPRansac(objectPoints=pts3d_i_np, imagePoints=pts2d_i_np, cameraMatrix=K_np, distCoeffs=None, flags=cv.SOLVEPNP_ITERATIVE, confidence=0.9999 ,reprojectionError=1)
+                    _, rvec0, T0, _ = cv2.solvePnPRansac(objectPoints=pts3d_i_np, imagePoints=pts2d_i_np, cameraMatrix=K_np, distCoeffs=None, flags=cv2.SOLVEPNP_ITERATIVE, confidence=0.9999 ,reprojectionError=1)
                 else:
                     rvec0 = np.array(ini_pose[i, 0:3].cpu().view(3, 1))
                     T0 = np.array(ini_pose[i, 3:6].cpu().view(3, 1))
-                _, rvec, T = cv2.solvePnP(objectPoints=pts3d_i_np, imagePoints=pts2d_i_np, cameraMatrix=K_np, distCoeffs=None, flags=cv.SOLVEPNP_ITERATIVE, useExtrinsicGuess=True, rvec=rvec0, tvec=T0)
+                _, rvec, T = cv2.solvePnP(objectPoints=pts3d_i_np, imagePoints=pts2d_i_np, cameraMatrix=K_np, distCoeffs=None, flags=cv2.SOLVEPNP_ITERATIVE, useExtrinsicGuess=True, rvec=rvec0, tvec=T0)
                 angle_axis = torch.tensor(rvec,device=device,dtype=torch.float).view(1, 3)
                 T = torch.tensor(T,device=device,dtype=torch.float).view(1, 3)
                 P_6d[i,:] = torch.cat((T, angle_axis),dim=-1)
@@ -333,7 +354,7 @@ class Model_geometry(nn.Module):
         # To Do: mask the unstatic point
 
         # calculate pose by pnp
-        pose_pred = self.pnp(corres, pts_3d, K) # [b,6]
+        pose_pred = self.pnp(corres, pts_3d, K[0]) # [b,6]
 
         # TO DO: pose_net's loss function
         loss = torch.abs(pose_vec - pose_pred).mean(1)
@@ -525,15 +546,15 @@ class Model_geometry(nn.Module):
         for scale in range(scales):
             flow_diff = flow_diffs[scale]
             b,_,w,h = flow_diff.size()
-            flow_diff_normalized = torch.cat([flow_diff[:,0,:,:].unsqueeze(1)*2/(w-1), flow_diff[:,1,:,:].unsqueeze(1)*2/(h-1)],1)
+            # flow_diff_normalized = torch.cat([flow_diff[:,0,:,:].unsqueeze(1)*2/(w-1), flow_diff[:,1,:,:].unsqueeze(1)*2/(h-1)],1)
             if masks == None:
                 mask = torch.ones(b,1,w,h).to(flow_diff.get_device())
             else:
                 mask = masks[scale]
             
             divider = mask.mean((1,2,3))
-            # error = (flow_diff*mask.repeat(1,2,1,1)).mean((1,2,3)) / (divider + 1e-12)
-            error = (flow_diff_normalized*mask.repeat(1,2,1,1)).mean((1,2,3)) / (divider + 1e-12)
+            error = (flow_diff*mask.repeat(1,2,1,1)).mean((1,2,3)) / (divider + 1e-12)
+            # error = (flow_diff_normalized*mask.repeat(1,2,1,1)).mean((1,2,3)) / (divider + 1e-12)
             loss_list.append(error[:,None])
         loss = torch.cat(loss_list, 1).sum(1) # (B)
         return loss
@@ -591,8 +612,6 @@ class Model_geometry(nn.Module):
         optical_flows_bwd = self.pwc_model(feature_list, feature_list_l, [img_h, img_w])
         optical_flows_fwd = self.pwc_model(feature_list, feature_list_r, [img_h, img_w])
 
-        # print(len(optical_flows_fwd))
-
 
         # calculate reconstructed image using depth and pose
         reconstructed_imgs_from_l, valid_masks_to_l, predicted_depths_to_l, computed_depths_to_l = \
@@ -605,10 +624,17 @@ class Model_geometry(nn.Module):
         img_warped_pyramid_from_r = self.warp_flow_pyramid(img_r_list, optical_flows_fwd)
         occ_mask_bwd, occ_mask_fwd = self.compute_occ_weight(img_warped_pyramid_from_l, img_list, img_warped_pyramid_from_r)
 
-        # dynamic mask
+        # dynamic mask by d f consis
         flow_diff_bwd, dynamic_masks_bwd = self.compute_dynamic_mask(K, disp_list, pose_vec_bwd, optical_flows_bwd)
         flow_diff_fwd, dynamic_masks_fwd = self.compute_dynamic_mask(K, disp_list, pose_vec_fwd, optical_flows_fwd)
 
+        # rigid mask by epipolar
+        dist_map_bwd = self.compute_epipolar_map(pose_vec_bwd, optical_flows_bwd[0], K, K_inv)
+        dist_map_fwd = self.compute_epipolar_map(pose_vec_fwd, optical_flows_fwd[0], K, K_inv)
+        rigid_mask_bwd, inlier_mask_bwd, rigid_score_bwd = self.get_rigid_mask(dist_map_bwd)
+        rigid_mask_fwd, inlier_mask_fwd, rigid_score_fwd = self.get_rigid_mask(dist_map_fwd)
+
+        # fusion mask
         fwd_mask = self.fusion_mask(valid_masks_to_r, occ_mask_fwd, dynamic_masks_fwd)
         bwd_mask = self.fusion_mask(valid_masks_to_l, occ_mask_bwd, dynamic_masks_bwd)
 
@@ -616,27 +642,24 @@ class Model_geometry(nn.Module):
         bwd_mask_valid_occ = self.fusion_mask_occ_valid(valid_masks_to_l, occ_mask_bwd)
 
 
-
-        # cv2.imwrite('./meta/occ_mask.png', np.transpose(255*occ_mask_fwd[0][0].cpu().detach().numpy(), [1,2,0]).astype(np.uint8))
-        # cv2.imwrite('./meta/dyna_mask.png', np.transpose(255*dynamic_masks_fwd[0][0].cpu().detach().numpy(), [1,2,0]).astype(np.uint8))
-        # cv2.imwrite('./meta/valid_mask.png', np.transpose(255*valid_masks_to_r[0][0].cpu().detach().numpy(), [1,2,0]).astype(np.uint8))
-
         # loss function
         loss_pack = {}
         mask_pack = {}
         
         mask_pack['occ_fwd_mask'] = 255*occ_mask_fwd[0][0].cpu().detach().numpy().astype(np.uint8)
+        mask_pack['rigid_fwd_mask'] = 255*rigid_mask_fwd[0].cpu().detach().numpy().astype(np.uint8)
         mask_pack['dyna_fwd_mask'] = 255*dynamic_masks_fwd[0][0].cpu().detach().numpy().astype(np.uint8)
         mask_pack['valid_fwd_mask'] = 255*valid_masks_to_r[0][0].cpu().detach().numpy().astype(np.uint8)
+        mask_pack['valid_occ_fwd_mask'] = 255*fwd_mask_valid_occ[0][0].cpu().detach().numpy().astype(np.uint8)
         mask_pack['origin_middle_image'] = img[0].cpu().detach().numpy()
 
         # depth and pose
-        loss_pack['loss_depth_pixel'] = self.compute_photometric_loss(img_list,reconstructed_imgs_from_l,bwd_mask) + \
-            self.compute_photometric_loss(img_list,reconstructed_imgs_from_r,fwd_mask)
+        loss_pack['loss_depth_pixel'] = self.compute_photometric_loss(img_list,reconstructed_imgs_from_l,bwd_mask_valid_occ) + \
+            self.compute_photometric_loss(img_list,reconstructed_imgs_from_r,fwd_mask_valid_occ)
         #loss_pack['loss_depth_pixel'] = torch.zeros([2]).to(img_l.get_device()).requires_grad_()
 
-        loss_pack['loss_depth_ssim'] = self.compute_ssim_loss(img_list,reconstructed_imgs_from_l,bwd_mask) + \
-            self.compute_ssim_loss(img_list,reconstructed_imgs_from_r,fwd_mask)
+        loss_pack['loss_depth_ssim'] = self.compute_ssim_loss(img_list,reconstructed_imgs_from_l,bwd_mask_valid_occ) + \
+            self.compute_ssim_loss(img_list,reconstructed_imgs_from_r,fwd_mask_valid_occ)
         # loss_pack['loss_depth_ssim'] = torch.zeros([2]).to(img_l.get_device()).requires_grad_()
 
         loss_pack['loss_depth_smooth'] = self.compute_smooth_loss(img, disp_list) + self.compute_smooth_loss(img_l, disp_l_list) + \
@@ -665,22 +688,22 @@ class Model_geometry(nn.Module):
         # loss_pack['loss_flow_consis'] = torch.zeros([2]).to(img_l.get_device()).requires_grad_()
         
         # fusion geom
-        loss_pack['loss_depth_flow_consis'] = self.compute_depth_flow_consis_loss(flow_diff_bwd, bwd_mask, 1) + \
-            self.compute_depth_flow_consis_loss(flow_diff_fwd, fwd_mask, 1)
+        loss_pack['loss_depth_flow_consis'] = self.compute_depth_flow_consis_loss(flow_diff_bwd, bwd_mask_valid_occ, 1) + \
+            self.compute_depth_flow_consis_loss(flow_diff_fwd, fwd_mask_valid_occ, 1)
         # loss_pack['loss_depth_flow_consis'] = self.compute_depth_flow_consis_loss(flow_diff_bwd, valid_masks_to_l, 1) + \
         #     self.compute_depth_flow_consis_loss(flow_diff_fwd, valid_masks_to_r, 1)
         # loss_pack['loss_depth_flow_consis'] = torch.zeros([2]).to(img_l.get_device()).requires_grad_()
 
-        loss_pack['loss_epipolar'] = self.compute_epipolar_loss(pose_vec_bwd,optical_flows_bwd[0],K,K_inv,bwd_mask[0]) + \
-            self.compute_epipolar_loss(pose_vec_fwd,optical_flows_fwd[0],K,K_inv,fwd_mask[0])
-        # loss_pack['loss_epipolar'] = torch.zeros([2]).to(img_l.get_device()).requires_grad_()
+        # loss_pack['loss_epipolar'] = self.compute_epipolar_loss(dist_map_bwd, rigid_mask_bwd, inlier_mask_bwd) + \
+        #     self.compute_epipolar_loss(dist_map_fwd, rigid_mask_fwd, inlier_mask_fwd)
+        loss_pack['loss_epipolar'] = torch.zeros([2]).to(img_l.get_device()).requires_grad_()
 
         # loss_pack['loss_triangle'] = self.compute_triangulate_loss(optical_flows_bwd, pose_vec_bwd, K, K_inv, disp_list, disp_l_list) + \
         #     self.compute_triangulate_loss(optical_flows_fwd, pose_vec_fwd, K, K_inv, disp_list, disp_r_list)
         loss_pack['loss_triangle'] = torch.zeros([2]).to(img_l.get_device()).requires_grad_()
 
-        loss_pack['loss_pnp'] = self.compute_pnp_loss(disp_list, optical_flows_bwd, pose_vec_bwd, K, K_inv) + \
-            self.compute_pnp_loss(disp_list, optical_flows_fwd, pose_vec_fwd, K, K_inv)
-        # loss_pack['loss_pnp'] = torch.zeros([2]).to(img_l.get_device()).requires_grad_()
+        # loss_pack['loss_pnp'] = self.compute_pnp_loss(disp_list, optical_flows_bwd, pose_vec_bwd, K, K_inv) + \
+        #     self.compute_pnp_loss(disp_list, optical_flows_fwd, pose_vec_fwd, K, K_inv)
+        loss_pack['loss_pnp'] = torch.zeros([2]).to(img_l.get_device()).requires_grad_()
 
         return loss_pack, mask_pack
