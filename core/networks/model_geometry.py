@@ -413,8 +413,10 @@ class Model_geometry(nn.Module):
         # orientation = F.normalize(orientation, p=2, dim=1)
         # orientation_target = F.normalize(orientation_target, p=2, dim=1)
 
-        position_loss = F.mse_loss(position, position_target)
-        orientation_loss = F.mse_loss(orientation, orientation_target)
+        position_loss = F.l1_loss(position, position_target, reduction='none')
+        # position_loss = F.mse_loss(position, position_target, reduction='none')
+        orientation_loss = F.l1_loss(orientation, orientation_target, reduction='none')
+        # orientation_loss = F.mse_loss(orientation, orientation_target, reduction='none')
         loss = position_loss + self.beta * orientation_loss
 
         return loss
@@ -685,8 +687,8 @@ class Model_geometry(nn.Module):
 
 
         # select points for geometry calculation
-        filtered_matches_fwd, filtered_depth = self.sample_match(optical_flows_fwd[0], disp_list[0], rigid_score_fwd*fwd_mask_valid_occ[0])
-        filtered_matches_bwd, _ = self.sample_match(optical_flows_bwd[0], disp_list[0], rigid_score_bwd*bwd_mask_valid_occ[0])
+        filtered_matches_fwd, filtered_depth = self.sample_match(optical_flows_fwd[0], disp_list[0], rigid_score_fwd*fwd_mask[0])
+        filtered_matches_bwd, _ = self.sample_match(optical_flows_bwd[0], disp_list[0], rigid_score_bwd*bwd_mask[0])
 
 
         # loss function
