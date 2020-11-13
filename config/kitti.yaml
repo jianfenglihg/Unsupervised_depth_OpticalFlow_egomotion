@@ -37,7 +37,7 @@ ransac_iters: 100
 ransac_points: 6000
 
 geometric_ratio: 0.3
-geometric_num: 4000
+geometric_num: 6000
 
 pose_beta: 1
 

@@ -346,7 +346,7 @@ class Model_geometry(nn.Module):
                 select_idxs.append(select_idx)
             select_idxs = torch.stack(select_idxs, 0) # [b,num,1]
             select_match = torch.gather(match.transpose(1,2), index=select_idxs.repeat(1,1,4), dim=1).transpose(1,2) # [b, 4, num]
-            select_depth = torch.gather(depth.transpose(1,2), index=select_idxs.repeat(1,1,1), dim=1).transpose(1,2) # [b, 1, num]
+            select_depth = torch.gather(depth.transpose(1,2), index=select_idxs, dim=1).transpose(1,2) # [b, 1, num]
         return select_match, select_depth, num
 
     def sample_match(self, flow, depth, mask):
@@ -360,8 +360,8 @@ class Model_geometry(nn.Module):
         mask = mask.view([b,1,-1])
 
         match_by_top_ratio, depth_by_top_ratio, top_ratio_mask = self.top_ratio_sample(match, depth, mask, self.ratio)
-        sampled_match, sampled_depth, _ = self.robust_rand_sample(match_by_top_ratio, depth_by_top_ratio, top_ratio_mask, self.num)
-
+        sampled_match, sampled_depth, end_num = self.robust_rand_sample(match_by_top_ratio, depth_by_top_ratio, top_ratio_mask, self.num)
+        
         return sampled_match, sampled_depth
 
 
@@ -389,7 +389,6 @@ class Model_geometry(nn.Module):
 
 
     def compute_pnp_loss(self, depth, matches, pose_vec, K, K_inv):
-        depth = depth[0]
         # world point
         b, _, n = matches.size()
         xy = matches[:,:2,:] # [b,2,n]
@@ -687,8 +686,8 @@ class Model_geometry(nn.Module):
 
 
         # select points for geometry calculation
-        filtered_matches_fwd, filtered_depth = self.sample_match(optical_flows_fwd[0], disp_list[0], rigid_score_fwd*fwd_mask[0])
-        filtered_matches_bwd, _ = self.sample_match(optical_flows_bwd[0], disp_list[0], rigid_score_bwd*bwd_mask[0])
+        filtered_matches_fwd, filtered_depth_fwd = self.sample_match(optical_flows_fwd[0], disp_list[0], rigid_score_fwd*fwd_mask_valid_occ[0])
+        filtered_matches_bwd, filtered_depth_bwd = self.sample_match(optical_flows_bwd[0], disp_list[0], rigid_score_bwd*bwd_mask_valid_occ[0])
 
 
         # loss function
@@ -752,8 +751,8 @@ class Model_geometry(nn.Module):
         #     self.compute_triangulate_loss(optical_flows_fwd, pose_vec_fwd, K, K_inv, disp_list, disp_r_list)
         loss_pack['loss_triangle'] = torch.zeros([2]).to(img_l.get_device()).requires_grad_()
 
-        loss_pack['loss_pnp'] = self.compute_pnp_loss(filtered_depth, filtered_matches_bwd, pose_vec_bwd, K, K_inv) + \
-            self.compute_pnp_loss(filtered_depth, filtered_matches_fwd, pose_vec_fwd, K, K_inv)
+        loss_pack['loss_pnp'] = self.compute_pnp_loss(filtered_depth_bwd, filtered_matches_bwd, pose_vec_bwd, K, K_inv) + \
+            self.compute_pnp_loss(filtered_depth_fwd, filtered_matches_fwd, pose_vec_fwd, K, K_inv)
         # loss_pack['loss_pnp'] = torch.zeros([2]).to(img_l.get_device()).requires_grad_()
 
         return loss_pack, mask_pack
