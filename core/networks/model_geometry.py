@@ -37,6 +37,11 @@ class Model_geometry(nn.Module):
 
         self.inlier_thres = 0.1
         self.rigid_thres = 0.5
+
+        self.ratio = cfg.geometric_ratio
+        self.num = cfg.geometric_num
+
+        self.beta = cfg.pose_beta
     
     def get_flow_norm(self, flow, p=2):
         '''
@@ -314,6 +319,52 @@ class Model_geometry(nn.Module):
             rigid_score = rigid_mask * 1.0 / (1.0 + dist_map)
         return rigid_mask, inlier_mask, rigid_score
 
+    def top_ratio_sample(self, match, depth, mask, ratio):
+        # match: [b, 4, -1] mask: [b, 1, -1]
+        b, total_num = match.shape[0], match.shape[-1]
+        scores, indices = torch.topk(mask, int(ratio*total_num), dim=-1) # [B, 1, ratio*tnum]
+        select_match = torch.gather(match.transpose(1,2), index=indices.squeeze(1).unsqueeze(-1).repeat(1,1,4), dim=1).transpose(1,2) # [b, 4, ratio*tnum]
+        select_depth = torch.gather(depth.transpose(1,2), index=indices.squeeze(1).unsqueeze(-1), dim=1).transpose(1,2) # [b, 1, ratio*tnum]
+        return select_match, select_depth, scores
+
+    def robust_rand_sample(self, match, depth, mask, num):
+        # match: [b, 4, -1] mask: [b, 1, -1]
+        b, n = match.shape[0], match.shape[2]
+        nonzeros_num = torch.min(torch.sum(mask > 0, dim=-1)) # []
+        if nonzeros_num.detach().cpu().numpy() == n:
+            rand_int = torch.randint(0, n, [num])
+            select_match = match[:,:,rand_int]
+            select_depth = depth[:,:,rand_int]
+        else:
+            # If there is zero score in match, sample the non-zero matches.
+            num = np.minimum(nonzeros_num.detach().cpu().numpy(), num)
+            select_idxs = []
+            for i in range(b):
+                nonzero_idx = torch.nonzero(mask[i,0,:]) # [nonzero_num,1]
+                rand_int = torch.randint(0, nonzero_idx.shape[0], [int(num)])
+                select_idx = nonzero_idx[rand_int, :] # [num, 1]
+                select_idxs.append(select_idx)
+            select_idxs = torch.stack(select_idxs, 0) # [b,num,1]
+            select_match = torch.gather(match.transpose(1,2), index=select_idxs.repeat(1,1,4), dim=1).transpose(1,2) # [b, 4, num]
+            select_depth = torch.gather(depth.transpose(1,2), index=select_idxs.repeat(1,1,1), dim=1).transpose(1,2) # [b, 1, num]
+        return select_match, select_depth, num
+
+    def sample_match(self, flow, depth, mask):
+        b,_,h,w = flow.size()
+        depth = depth.view([b,1,-1])
+        grid = self.meshgrid(h, w).float().to(flow.get_device()).unsqueeze(0).repeat(b,1,1,1) #[b,2,h,w]
+        corres = torch.cat([(grid[:,0,:,:] + flow[:,0,:,:]).unsqueeze(1), (grid[:,1,:,:] + flow[:,1,:,:]).unsqueeze(1)], 1)
+        match = torch.cat([grid, corres], 1) # [b,4,h,w]
+        match = match.view([b,4,-1]) # [b,4,n]
+
+        mask = mask.view([b,1,-1])
+
+        match_by_top_ratio, depth_by_top_ratio, top_ratio_mask = self.top_ratio_sample(match, depth, mask, self.ratio)
+        sampled_match, sampled_depth, _ = self.robust_rand_sample(match_by_top_ratio, depth_by_top_ratio, top_ratio_mask, self.num)
+
+        return sampled_match, sampled_depth
+
+
     def pnp(self, pts2d, pts3d, K, ini_pose=None):
             bs = pts2d.size(0)
             n = pts2d.size(1)
@@ -337,45 +388,36 @@ class Model_geometry(nn.Module):
             return P_6d
 
 
-    def compute_pnp_loss(self, depth, flow, pose_vec, K, K_inv):
+    def compute_pnp_loss(self, depth, matches, pose_vec, K, K_inv):
         depth = depth[0]
-        flow = flow[0]
         # world point
-        b, h, w = depth.shape[0], depth.shape[2], depth.shape[3]
-        xy = self.meshgrid(h,w).unsqueeze(0).repeat(b,1,1,1).float().to(flow.get_device()) # [b,2,h,w]
-        ones = torch.ones([b,1,h,w]).float().to(flow.get_device())
-        pts_3d = K_inv.bmm(torch.cat([xy, ones], 1).view([b,3,-1])) * depth.view([b,1,-1]) # [b,3,h*w]
-        pts_3d = pts_3d.transpose(1,2) # [b,n,3]
-
+        b, _, n = matches.size()
+        xy = matches[:,:2,:] # [b,2,n]
+        ones = torch.ones([b,1,n]).float().to(depth.get_device()) # [b,1,n]
+        pts_3d = K_inv.bmm(torch.cat([xy, ones], 1)) * depth # [b,3,n]
+        pts_3d = pts_3d.transpose(1,2)
+        
         # image point
-        corres = torch.cat([(xy[:,0,:,:] + flow[:,0,:,:]).unsqueeze(1), (xy[:,1,:,:] + flow[:,1,:,:]).unsqueeze(1)], 1) # [b,2,h,w]
-        corres = corres.view([b,2,-1]).transpose(1,2) # [b,n,2]
-
-        # To Do: mask the unstatic point
+        corres = matches[:,2:,:]
+        corres = corres.transpose(1,2)
 
         # calculate pose by pnp
         pose_pred = self.pnp(corres, pts_3d, K[0]) # [b,6]
 
         # TO DO: pose_net's loss function
-        loss = torch.abs(pose_vec - pose_pred).mean(1)
+        position = pose_pred[:, :3]
+        orientation = pose_pred[:, 3:]
+        position_target = pose_vec[:, :3]
+        orientation_target = pose_vec[:, 3:]
 
-        # dist_coeffs = np.zeros((4, 1))
+        # orientation = F.normalize(orientation, p=2, dim=1)
+        # orientation_target = F.normalize(orientation_target, p=2, dim=1)
 
-        # losses = []
-        # for i in range(b):
-        #     pts_3d_ = pts_3d[i,:,:]
-        #     corres_ = corres[i,:,:]
-        #     K_ = K[i].cpu().detach().numpy() # [3,3]
-        #     pts_3d_ = pts_3d_.cpu().detach().numpy() # [n,3]
-        #     corres_ = corres_.cpu().detach().numpy() # [n,2]
-        #     # flag, r, t, inlier = cv2.solvePnP(objectPoints=pts_3d_, imagePoints=corres_, cameraMatrix=K_, distCoeffs=None, iterationsCount=self.PnP_ransac_iter, reprojectionError=self.PnP_ransac_thre)
-        #     retval,rvec,tvec = cv2.solvePnP(pts_3d_,corres_,K_,dist_coeffs)
-        #     tvec = torch.from_numpy(tvec).float().to(flow.get_device())
-        #     pose_tvec = pose_vec[i,:3]
-        #     loss = torch.abs(tvec-pose_tvec).mean(1)
-        #     losses.append(loss)
-        # return torch.cat(losses, .sum(0)
-        return loss.sum(0) 
+        position_loss = F.mse_loss(position, position_target)
+        orientation_loss = F.mse_loss(orientation, orientation_target)
+        loss = position_loss + self.beta * orientation_loss
+
+        return loss
 
     
     def midpoint_triangulate(self, flow, K, K_inv, P1, P2):
@@ -642,24 +684,30 @@ class Model_geometry(nn.Module):
         bwd_mask_valid_occ = self.fusion_mask_occ_valid(valid_masks_to_l, occ_mask_bwd)
 
 
+        # select points for geometry calculation
+        filtered_matches_fwd, filtered_depth = self.sample_match(optical_flows_fwd[0], disp_list[0], rigid_score_fwd*fwd_mask_valid_occ[0])
+        filtered_matches_bwd, _ = self.sample_match(optical_flows_bwd[0], disp_list[0], rigid_score_bwd*bwd_mask_valid_occ[0])
+
+
         # loss function
         loss_pack = {}
         mask_pack = {}
         
         mask_pack['occ_fwd_mask'] = 255*occ_mask_fwd[0][0].cpu().detach().numpy().astype(np.uint8)
         mask_pack['rigid_fwd_mask'] = 255*rigid_mask_fwd[0].cpu().detach().numpy().astype(np.uint8)
+        mask_pack['inlier_fwd_mask'] = 255*inlier_mask_fwd[0].cpu().detach().numpy().astype(np.uint8)
         mask_pack['dyna_fwd_mask'] = 255*dynamic_masks_fwd[0][0].cpu().detach().numpy().astype(np.uint8)
         mask_pack['valid_fwd_mask'] = 255*valid_masks_to_r[0][0].cpu().detach().numpy().astype(np.uint8)
         mask_pack['valid_occ_fwd_mask'] = 255*fwd_mask_valid_occ[0][0].cpu().detach().numpy().astype(np.uint8)
         mask_pack['origin_middle_image'] = img[0].cpu().detach().numpy()
 
         # depth and pose
-        loss_pack['loss_depth_pixel'] = self.compute_photometric_loss(img_list,reconstructed_imgs_from_l,bwd_mask_valid_occ) + \
-            self.compute_photometric_loss(img_list,reconstructed_imgs_from_r,fwd_mask_valid_occ)
+        loss_pack['loss_depth_pixel'] = self.compute_photometric_loss(img_list,reconstructed_imgs_from_l,bwd_mask) + \
+            self.compute_photometric_loss(img_list,reconstructed_imgs_from_r,fwd_mask)
         #loss_pack['loss_depth_pixel'] = torch.zeros([2]).to(img_l.get_device()).requires_grad_()
 
-        loss_pack['loss_depth_ssim'] = self.compute_ssim_loss(img_list,reconstructed_imgs_from_l,bwd_mask_valid_occ) + \
-            self.compute_ssim_loss(img_list,reconstructed_imgs_from_r,fwd_mask_valid_occ)
+        loss_pack['loss_depth_ssim'] = self.compute_ssim_loss(img_list,reconstructed_imgs_from_l,bwd_mask) + \
+            self.compute_ssim_loss(img_list,reconstructed_imgs_from_r,fwd_mask)
         # loss_pack['loss_depth_ssim'] = torch.zeros([2]).to(img_l.get_device()).requires_grad_()
 
         loss_pack['loss_depth_smooth'] = self.compute_smooth_loss(img, disp_list) + self.compute_smooth_loss(img_l, disp_l_list) + \
@@ -688,8 +736,8 @@ class Model_geometry(nn.Module):
         # loss_pack['loss_flow_consis'] = torch.zeros([2]).to(img_l.get_device()).requires_grad_()
         
         # fusion geom
-        loss_pack['loss_depth_flow_consis'] = self.compute_depth_flow_consis_loss(flow_diff_bwd, bwd_mask_valid_occ, 1) + \
-            self.compute_depth_flow_consis_loss(flow_diff_fwd, fwd_mask_valid_occ, 1)
+        loss_pack['loss_depth_flow_consis'] = self.compute_depth_flow_consis_loss(flow_diff_bwd, bwd_mask, 1) + \
+            self.compute_depth_flow_consis_loss(flow_diff_fwd, fwd_mask, 1)
         # loss_pack['loss_depth_flow_consis'] = self.compute_depth_flow_consis_loss(flow_diff_bwd, valid_masks_to_l, 1) + \
         #     self.compute_depth_flow_consis_loss(flow_diff_fwd, valid_masks_to_r, 1)
         # loss_pack['loss_depth_flow_consis'] = torch.zeros([2]).to(img_l.get_device()).requires_grad_()
@@ -702,8 +750,8 @@ class Model_geometry(nn.Module):
         #     self.compute_triangulate_loss(optical_flows_fwd, pose_vec_fwd, K, K_inv, disp_list, disp_r_list)
         loss_pack['loss_triangle'] = torch.zeros([2]).to(img_l.get_device()).requires_grad_()
 
-        # loss_pack['loss_pnp'] = self.compute_pnp_loss(disp_list, optical_flows_bwd, pose_vec_bwd, K, K_inv) + \
-        #     self.compute_pnp_loss(disp_list, optical_flows_fwd, pose_vec_fwd, K, K_inv)
-        loss_pack['loss_pnp'] = torch.zeros([2]).to(img_l.get_device()).requires_grad_()
+        loss_pack['loss_pnp'] = self.compute_pnp_loss(filtered_depth, filtered_matches_bwd, pose_vec_bwd, K, K_inv) + \
+            self.compute_pnp_loss(filtered_depth, filtered_matches_fwd, pose_vec_fwd, K, K_inv)
+        # loss_pack['loss_pnp'] = torch.zeros([2]).to(img_l.get_device()).requires_grad_()
 
         return loss_pack, mask_pack

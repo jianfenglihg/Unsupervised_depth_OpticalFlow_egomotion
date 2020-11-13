@@ -144,6 +144,9 @@ def train(cfg, observer):
                     visualizer.add_log_pack({'eval_2012_res': eval_2012_res, 'eval_2015_res': eval_2015_res})
                     eval_depth_res = test_eigen_depth(cfg, model_eval)
                     visualizer.add_log_pack({'eval_eigen_res': eval_depth_res})
+                    
+                    abs_rel, sq_rel, rms, log_rms, a1, a2, a3 = eval_depth_res
+                    observer.add_scalar('test_depth', abs_rel, iter_)
 
             elif cfg.dataset == 'nyuv2':
                 if not cfg.mode == 'flow':
@@ -183,6 +186,7 @@ def train(cfg, observer):
             observer.add_image('origin_middle_image', mask_pack['origin_middle_image'], iter_)
             observer.add_image('occ_fwd_mask', mask_pack['occ_fwd_mask'], iter_)
             observer.add_image('dyna_fwd_mask', mask_pack['dyna_fwd_mask'], iter_)
+            observer.add_image('inlier_fwd_mask', mask_pack['inlier_fwd_mask'], iter_)
             observer.add_image('rigid_fwd_mask', mask_pack['rigid_fwd_mask'], iter_)
             observer.add_image('valid_fwd_mask', mask_pack['valid_fwd_mask'], iter_)
             observer.add_image('valid_occ_fwd_mask', mask_pack['valid_occ_fwd_mask'], iter_)

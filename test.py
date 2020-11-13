@@ -4,7 +4,7 @@ from core.dataset import KITTI_2012, KITTI_2015
 from core.evaluation import eval_flow_avg, load_gt_flow_kitti
 from core.evaluation import eval_depth
 from core.visualize import Visualizer_debug
-from core.networks import Model_depth_pose, Model_flow, Model_flowposenet, Model_depth
+from core.networks import Model_depth_pose, Model_flow, Model_flowposenet, Model_depth, Model_geometry
 from core.evaluation import load_gt_flow_kitti, load_gt_mask
 import torch
 from tqdm import tqdm
@@ -235,6 +235,8 @@ if __name__ == '__main__':
         model = Model_flow(cfg_new)
     elif args.mode == 'depth' or args.mode == 'flow_3stage':
         model = Model_depth(cfg_new)
+    elif args.mode == 'geom':
+        model = Model_geometry(cfg_new)
     elif args.mode == 'flowposenet':
         model = Model_flowposenet(cfg_new)
     
