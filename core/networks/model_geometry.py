@@ -349,7 +349,8 @@ class Model_geometry(nn.Module):
 
     def compute_epipolar_loss(self, dist_map, rigid_mask):
     
-        loss = (dist_map*rigid_mask).mean((1,2,3)) / (rigid_mask.mean((1,2,3)) + 1e-12)
+        # loss = (dist_map*rigid_mask).mean((1,2,3)) / (rigid_mask.mean((1,2,3)) + 1e-12)
+        loss = dist_map.mean((1,2,3))
 
         return loss
 
