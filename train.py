@@ -181,7 +181,7 @@ def train(cfg, observer):
             observer.add_scalar('pnp', loss_pack['loss_pnp'].mean().detach().cpu().numpy(), iter_)
             observer.add_scalar('triangulate', loss_pack['loss_triangle'].mean().detach().cpu().numpy(), iter_)
 
-            # mask image
+            # image
         if iter_ and iter_ % (cfg.vis_interval*10) == 0:
             observer.add_image('origin_middle_image', mask_pack['origin_middle_image'], iter_)
             observer.add_image('occ_fwd_mask', mask_pack['occ_fwd_mask'], iter_)
@@ -191,7 +191,7 @@ def train(cfg, observer):
             observer.add_image('valid_fwd_mask', mask_pack['valid_fwd_mask'], iter_)
             observer.add_image('valid_occ_fwd_mask', mask_pack['valid_occ_fwd_mask'], iter_)
 
-            observer.add_image('pred_depth', mask_pack['pred_depth_img'], iter_)
+            observer.add_image('pred_depth', visualizer.tensor2array(mask_pack['pred_depth_img']), iter_)
             
             
         loss_list = []
