@@ -298,7 +298,7 @@ def inverse_warp2(img, depth, ref_depth, pose, intrinsics, padding_mode='zeros')
     valid_mask = valid_points.unsqueeze(1).float()
 
     projected_depth = F.grid_sample(
-        ref_depth, src_pixel_coords, padding_mode=padding_mode).clamp(min=1e-3, max=1e3)  ##### jianfeng add max
+        ref_depth, src_pixel_coords, padding_mode=padding_mode).clamp(min=1e-3) 
 
     return projected_img, valid_mask, projected_depth, computed_depth
 

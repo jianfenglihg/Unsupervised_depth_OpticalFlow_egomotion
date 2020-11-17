@@ -190,6 +190,8 @@ def train(cfg, observer):
             observer.add_image('rigid_fwd_mask', mask_pack['rigid_fwd_mask'], iter_)
             observer.add_image('valid_fwd_mask', mask_pack['valid_fwd_mask'], iter_)
             observer.add_image('valid_occ_fwd_mask', mask_pack['valid_occ_fwd_mask'], iter_)
+
+            observer.add_image('pred_depth', mask_pack['pred_depth_img'], iter_)
             
             
         loss_list = []
