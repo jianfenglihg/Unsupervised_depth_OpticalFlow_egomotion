@@ -751,7 +751,7 @@ class Model_geometry(nn.Module):
         mask_pack['dyna_fwd_mask'] = 255*dynamic_masks_fwd[0][0].cpu().detach().numpy().astype(np.uint8)
         mask_pack['valid_fwd_mask'] = 255*valid_masks_to_r[0][0].cpu().detach().numpy().astype(np.uint8)
         mask_pack['valid_occ_fwd_mask'] = 255*fwd_mask_valid_occ[0][0].cpu().detach().numpy().astype(np.uint8)
-        mask_pack['pred_depth_img'] = 255*disp_list[0][0].cpu().detach().numpy()
+        mask_pack['pred_depth_img'] = 1/disp_list[0][0].cpu().detach().numpy()
         mask_pack['origin_middle_image'] = img[0].cpu().detach().numpy()
 
         # depth and pose
