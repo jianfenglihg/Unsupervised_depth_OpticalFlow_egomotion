@@ -308,25 +308,37 @@ class Model_geometry(nn.Module):
         points2 = match[:,2:,:]
         ones = torch.ones(num_batch, 1, match_num).to(points1.get_device())
         points1 = torch.cat([points1, ones], 1) # [b,3,n]
-        points2 = torch.cat([points2, ones], 1).transpose(1,2) # [b,n,3]
+        points2 = torch.cat([points2, ones], 1) # [b,3,n]
 
         # compute fundmental matrix
         E = compute_essential_matrix(pose)
         F_meta = E.bmm(intrinsics_inverse)
-        F = torch.inverse(intrinsics.permute([0, 2, 1])).bmm(F_meta)  # T and then -1 
+        F = torch.inverse(intrinsics.permute([0, 2, 1])).bmm(F_meta)  # T and then -1
 
-        epi_line = F.bmm(points1) # [b,3,n]
-        dist_p2l = torch.abs((epi_line.permute([0, 2, 1]) * points2).sum(-1, keepdim=True)) # [b,n,1]
-
-        a = epi_line[:,0,:].unsqueeze(1).transpose(1,2) # [b,n,1]
-        b = epi_line[:,1,:].unsqueeze(1).transpose(1,2) # [b,n,1]
+        epi_line = F.bmm(points2) # [b,3,n]
+        a = epi_line[:,0,:].unsqueeze(1) # [b,1,n]
+        b = epi_line[:,1,:].unsqueeze(1) # [b,1,n]
         dist_div = torch.sqrt(a*a + b*b) + 1e-6
-        dist_map = dist_p2l / dist_div # [B, n, 1]
-        dist_map = dist_map.transpose(1,2)
-        dist_map = dist_map.view([batch_size,1,flow_h,flow_w])
+
+        geom_dist = torch.abs(torch.sum(points1 * epi_line, dim=1, keepdim=True)) #[b,1,n]
+        epipolar = geom_dist / dist_div #[b,1,n]
+        epipolar = epipolar.view([batch_size,1,flow_h,flow_w]) 
+
+
+        # points2 = points2.transpose(1,2)
+        # epi_line = F.bmm(points1) # [b,3,n]
+        # dist_p2l = torch.abs((epi_line.permute([0, 2, 1]) * points2).sum(-1, keepdim=True)) # [b,n,1]
+
+        # a = epi_line[:,0,:].unsqueeze(1).transpose(1,2) # [b,n,1]
+        # b = epi_line[:,1,:].unsqueeze(1).transpose(1,2) # [b,n,1]
+        # dist_div = torch.sqrt(a*a + b*b) + 1e-6
+        # dist_map = dist_p2l / dist_div # [B, n, 1]
+        # dist_map = dist_map.transpose(1,2)
+        # dist_map = dist_map.view([batch_size,1,flow_h,flow_w])
 
         # loss = (dist_map * mask.transpose(1,2)).mean([1,2]) / mask.mean([1,2])
-        return dist_map
+        return epipolar
+        # return dist_map, epipolar
 
     # def compute_epipolar_loss(self, dist_map, rigid_mask, inlier_mask):
 
@@ -706,7 +718,9 @@ class Model_geometry(nn.Module):
 
         # rigid mask by epipolar
         dist_map_bwd = self.compute_epipolar_map(pose_vec_bwd, optical_flows_bwd[0], K, K_inv)
+        # dist_map_bwd, epipolar_bwd = self.compute_epipolar_map(pose_vec_bwd, optical_flows_bwd[0], K, K_inv)
         dist_map_fwd = self.compute_epipolar_map(pose_vec_fwd, optical_flows_fwd[0], K, K_inv)
+        # dist_map_fwd, epipolar_fwd = self.compute_epipolar_map(pose_vec_fwd, optical_flows_fwd[0], K, K_inv)
         rigid_mask_bwd, inlier_mask_bwd, rigid_score_bwd = self.get_rigid_mask(dist_map_bwd)
         rigid_mask_fwd, inlier_mask_fwd, rigid_score_fwd = self.get_rigid_mask(dist_map_fwd)
 
@@ -799,6 +813,8 @@ class Model_geometry(nn.Module):
 
         loss_pack['loss_epipolar'] = self.compute_epipolar_loss(dist_map_bwd, bwd_mask[0]) + \
             self.compute_epipolar_loss(dist_map_fwd, fwd_mask[0])
+        # loss_pack['loss_epipolar'] = self.compute_epipolar_loss(epipolar_bwd, valid_mask_bwd[0]) + \
+        #     self.compute_epipolar_loss(epipolar_fwd, valid_mask_fwd[0])
         # loss_pack['loss_epipolar'] = torch.zeros([2]).to(img_l.get_device()).requires_grad_()
 
         # loss_pack['loss_triangle'] = self.compute_triangulate_loss(optical_flows_bwd, pose_vec_bwd, K, K_inv, disp_list, disp_l_list) + \

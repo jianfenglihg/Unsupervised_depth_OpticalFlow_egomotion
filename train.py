@@ -192,6 +192,7 @@ def train(cfg, observer):
             observer.add_image('valid_occ_fwd_mask', mask_pack['valid_occ_fwd_mask'], iter_)
 
             observer.add_image('pred_depth', visualizer.tensor2array(mask_pack['pred_depth_img']), iter_)
+            observer.add_image('pred_disp', visualizer.tensor2array(1/mask_pack['pred_depth_img'],max_value=None, colormap='bone'), iter_)
             
             
         loss_list = []

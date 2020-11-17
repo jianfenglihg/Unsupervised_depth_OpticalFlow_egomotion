@@ -68,6 +68,20 @@ class Model_depth(nn.Module):
         loss = torch.cat(loss_list, 1).sum(1) # (B)
         return loss
 
+    def compute_photometric_depth_loss(self, img_list, img_warped_list, img_list_source, mask_list):
+        loss_list = []
+        for scale in range(self.num_scales):
+            img, img_warped, img_source, mask = img_list[scale], img_warped_list[scale], img_list_source[scale], mask_list[scale]
+            # texture_mask = F.interpolate(compute_texture_mask(img), size=(mask.shape[2], mask.shape[3]), mode='bilinear')
+            texture_mask = (torch.abs(img-img_warped).mean(1, keepdim=True) < torch.abs(img-img_source).mean(1, keepdim=True)).float()
+            mask = mask*texture_mask
+            divider = mask.mean((1,2,3))
+            img_diff = torch.abs((img - img_warped)) * mask.repeat(1,3,1,1)
+            loss_pixel = img_diff.mean((1,2,3)) / (divider + 1e-12) # (B)
+            loss_list.append(loss_pixel[:,None])
+        loss = torch.cat(loss_list, 1).sum(1) # (B)
+        return loss
+
     def compute_photometric_loss_min(self, img_list, img_warped_from_l_list, img_warped_from_r_list):
         loss_list = []
         for scale in range(self.num_scales):
