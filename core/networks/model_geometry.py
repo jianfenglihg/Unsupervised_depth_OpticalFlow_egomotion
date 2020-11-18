@@ -315,12 +315,12 @@ class Model_geometry(nn.Module):
         F_meta = E.bmm(intrinsics_inverse)
         F = torch.inverse(intrinsics.permute([0, 2, 1])).bmm(F_meta)  # T and then -1
 
-        epi_line = F.bmm(points2) # [b,3,n]
+        epi_line = F.bmm(points1) # [b,3,n]
         a = epi_line[:,0,:].unsqueeze(1) # [b,1,n]
         b = epi_line[:,1,:].unsqueeze(1) # [b,1,n]
         dist_div = torch.sqrt(a*a + b*b) + 1e-6
 
-        geom_dist = torch.abs(torch.sum(points1 * epi_line, dim=1, keepdim=True)) #[b,1,n]
+        geom_dist = torch.abs(torch.sum(points2 * epi_line, dim=1, keepdim=True)) #[b,1,n]
         epipolar = geom_dist / dist_div #[b,1,n]
         epipolar = epipolar.view([batch_size,1,flow_h,flow_w]) 
 

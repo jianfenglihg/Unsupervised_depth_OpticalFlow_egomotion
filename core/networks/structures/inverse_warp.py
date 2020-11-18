@@ -359,8 +359,8 @@ def compute_essential_matrix(vec, rotation_mode='euler'):
     elif rotation_mode == 'quat':
         rot_mat = quat2mat(rot)  # [B, 3, 3]
     skewsymmetric_mat = skewsymmetric(translation) # [B 3 3]
-    # essential_mat = skewsymmetric_mat.bmm(rot_mat)
-    essential_mat = rot_mat.bmm(skewsymmetric_mat)
+    essential_mat = skewsymmetric_mat.bmm(rot_mat)
+    # essential_mat = rot_mat.bmm(skewsymmetric_mat)
     return essential_mat
 
 def compute_projection_matrix(vec, K, rotation_mode='euler'):
