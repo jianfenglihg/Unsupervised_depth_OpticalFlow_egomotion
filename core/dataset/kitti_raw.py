@@ -74,7 +74,7 @@ class KITTI_RAW(object):
         return test_scenes
 
     def prepare_data_mp(self, output_dir, stride=1):
-        num_processes = 16
+        num_processes = 8
         processes = []
         q = mp.Queue()
         static_frames = self.collect_static_frame()
