@@ -90,7 +90,8 @@ def train(cfg, observer):
     visualizer = Visualizer(loss_weights_dict, cfg.log_dump_dir)
 
     # load dataset
-    data_dir = os.path.join(cfg.prepared_base_dir, cfg.prepared_save_dir)
+    data_dir = os.path.join(cfg.prepared_base_dir)
+    # data_dir = os.path.join(cfg.prepared_base_dir, cfg.prepared_save_dir)
     if not os.path.exists(os.path.join(data_dir, 'train.txt')):
         if cfg.dataset == 'kitti_depth':
             kitti_raw_dataset = KITTI_RAW(cfg.raw_base_dir, cfg.static_frames_txt, cfg.test_scenes_txt)
