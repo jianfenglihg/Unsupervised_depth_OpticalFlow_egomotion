@@ -6,6 +6,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import math
 
 from pytorch_ssim import SSIM
 from structures import *
@@ -94,6 +95,7 @@ class Model_depth(nn.Module):
 
     def compute_photometric_depth_loss(self, img_list, img_warped_list, img_list_source, mask_list):
         loss_list = []
+        weight_alpha = 2.7
         for scale in range(self.num_scales):
             img, img_warped, img_source, mask = img_list[scale], img_warped_list[scale], img_list_source[scale], mask_list[scale]
             # texture_mask = F.interpolate(compute_texture_mask(img), size=(mask.shape[2], mask.shape[3]), mode='bilinear')
@@ -102,6 +104,7 @@ class Model_depth(nn.Module):
             divider = mask.mean((1,2,3))
             img_diff = torch.abs((img - img_warped)) * mask.repeat(1,3,1,1)
             loss_pixel = img_diff.mean((1,2,3)) / (divider + 1e-12) # (B)
+            loss_pixel = loss_pixel / math.pow(weight_alpha, scale)
             loss_list.append(loss_pixel[:,None])
         loss = torch.cat(loss_list, 1).sum(1) # (B)
         return loss
@@ -134,10 +137,10 @@ class Model_depth(nn.Module):
         loss = torch.cat(loss_list, 1).sum(1) # (B)
         return loss
 
-    def compute_ssim_loss(self, img_list, img_warped_list, mask_list):
+    def compute_ssim_loss(self, img, img_warped_list, mask_list):
         loss_list = []
         for scale in range(self.num_scales):
-            img, img_warped, occ_mask = img_list[scale], img_warped_list[scale], mask_list[scale]
+            img_warped, occ_mask = img_warped_list[scale], mask_list[scale]
             divider = occ_mask.mean((1,2,3))
             occ_mask_pad = occ_mask.repeat(1,3,1,1)
             ssim = SSIM(img * occ_mask_pad, img_warped * occ_mask_pad)
@@ -207,34 +210,33 @@ class Model_depth(nn.Module):
         disp_list = self.depth_net(img) 
         disp_r_list = self.depth_net(img_r)
 
-        # depth_l_list = [self.disp2depth(disp) for disp in disp_l_list]
-        # depth_list   = [self.disp2depth(disp) for disp in disp_list]
-        # depth_r_list = [self.disp2depth(disp) for disp in disp_r_list]
-
+        depth_l_list = [self.disp2depth(disp) for disp in disp_l_list]
+        depth_list   = [self.disp2depth(disp) for disp in disp_list]
+        depth_r_list = [self.disp2depth(disp) for disp in disp_r_list]
 
         # pose infer
-        pose_inputs = torch.cat([img_l,img,img_r],1)
+        pose_inputs = torch.cat([img,img_l,img_r],1)
         pose_vectors = self.pose_net(pose_inputs)
         pose_vec_fwd = pose_vectors[:,1,:]
         pose_vec_bwd = pose_vectors[:,0,:]
 
         # calculate reconstructed image
         reconstructed_imgs_from_l, valid_masks_to_l, predicted_depths_to_l, computed_depths_to_l = \
-            self.reconstruction_up(img_l, K, disp_list, disp_l_list, pose_vec_bwd)
+            self.reconstruction_up(img_l, K, depth_list, depth_l_list, pose_vec_bwd)
         reconstructed_imgs_from_r, valid_masks_to_r, predicted_depths_to_r, computed_depths_to_r = \
-            self.reconstruction_up(img_r, K, disp_list, disp_r_list, pose_vec_fwd)
+            self.reconstruction_up(img_r, K, depth_list, depth_r_list, pose_vec_fwd)
 
         loss_pack = {}
         mask_pack = {}
 
         # loss_pack['loss_depth_pixel'] = self.compute_photometric_loss(img_list,reconstructed_imgs_from_l,valid_masks_to_l) + \
         #     self.compute_photometric_loss(img_list,reconstructed_imgs_from_r,valid_masks_to_r)
-        loss_pack['loss_depth_pixel'] = self.compute_photometric_depth_loss(img_list,reconstructed_imgs_from_l,img_l_list,valid_masks_to_l) + \
-            self.compute_photometric_depth_loss(img_list, reconstructed_imgs_from_r, img_r_list, valid_masks_to_r)
+        loss_pack['loss_depth_pixel'] = self.compute_photometric_depth_loss(img,reconstructed_imgs_from_l,img_l,valid_masks_to_l) + \
+            self.compute_photometric_depth_loss(img, reconstructed_imgs_from_r, img_r, valid_masks_to_r)
         # loss_pack['loss_depth_pixel'] = self.compute_photometric_loss_min(img_list, reconstructed_imgs_from_l, reconstructed_imgs_from_r)
 
-        loss_pack['loss_depth_ssim'] = self.compute_ssim_loss(img_list,reconstructed_imgs_from_l,valid_masks_to_l) + \
-            self.compute_ssim_loss(img_list,reconstructed_imgs_from_r,valid_masks_to_r)
+        loss_pack['loss_depth_ssim'] = self.compute_ssim_loss(img,reconstructed_imgs_from_l,valid_masks_to_l) + \
+            self.compute_ssim_loss(img,reconstructed_imgs_from_r,valid_masks_to_r)
 
         loss_pack['loss_depth_smooth'] = self.compute_smooth_loss(img, disp_list) + self.compute_smooth_loss(img_l, disp_l_list) + \
             self.compute_smooth_loss(img_r, disp_r_list)
