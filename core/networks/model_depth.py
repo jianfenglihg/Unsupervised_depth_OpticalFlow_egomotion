@@ -29,6 +29,30 @@ class Model_depth(nn.Module):
             img_new = F.adaptive_avg_pool2d(img, [int(img_h / (2**s)), int(img_w / (2**s))]).data
             img_pyramid.append(img_new)
         return img_pyramid
+    
+    def reconstruction_up(self, ref_img, intrinsics, depth, depth_ref, pose, padding_mode='zeros'):
+        reconstructed_img = []
+        valid_mask = []
+        projected_depth = []
+        computed_depth = []
+        b,_,h,w = ref_img.size()
+
+        for scale in range(self.num_scales):
+            
+            depth_scale = depth[scale]
+            depth_ref_scale = depth_ref[scale]
+            depth_up = F.interpolate(depth_scale, (h, w), mode='bilinear')
+            depth_ref_up = F.interpolate(depth_ref_scale, (h, w), mode='bilinear')
+
+            reconstructed_img_scale, valid_mask_scale, projected_depth_scale, computed_depth_scale = \
+                 inverse_warp2(ref_img, depth_up, depth_ref_up, pose, intrinsics)
+
+            reconstructed_img.append(reconstructed_img_scale)
+            valid_mask.append(valid_mask_scale)
+            projected_depth.append(projected_depth_scale)
+            computed_depth.append(computed_depth_scale)
+
+        return reconstructed_img, valid_mask, projected_depth, computed_depth
 
     def reconstruction(self, ref_img, intrinsics, depth, depth_ref, pose, padding_mode='zeros'):
         reconstructed_img = []
@@ -174,7 +198,7 @@ class Model_depth(nn.Module):
 
         img_h, img_w = int(images.shape[2] / 3), images.shape[3] 
         img_l, img, img_r = images[:,:,:img_h,:], images[:,:,img_h:2*img_h,:], images[:,:,2*img_h:3*img_h,:]
-        img_list = self.generate_img_pyramid(img, self.num_scales)
+        # img_list = self.generate_img_pyramid(img, self.num_scales)
         # img_l_list = self.generate_img_pyramid(img_l, self.num_scales)
         # img_r_list = self.generate_img_pyramid(img_r, self.num_scales)
 
@@ -196,14 +220,17 @@ class Model_depth(nn.Module):
 
         # calculate reconstructed image
         reconstructed_imgs_from_l, valid_masks_to_l, predicted_depths_to_l, computed_depths_to_l = \
-            self.reconstruction(img_l, K, disp_list, disp_l_list, pose_vec_bwd)
+            self.reconstruction_up(img_l, K, disp_list, disp_l_list, pose_vec_bwd)
         reconstructed_imgs_from_r, valid_masks_to_r, predicted_depths_to_r, computed_depths_to_r = \
-            self.reconstruction(img_r, K, disp_list, disp_r_list, pose_vec_fwd)
+            self.reconstruction_up(img_r, K, disp_list, disp_r_list, pose_vec_fwd)
 
         loss_pack = {}
+        mask_pack = {}
 
-        loss_pack['loss_depth_pixel'] = self.compute_photometric_loss(img_list,reconstructed_imgs_from_l,valid_masks_to_l) + \
-            self.compute_photometric_loss(img_list,reconstructed_imgs_from_r,valid_masks_to_r)
+        # loss_pack['loss_depth_pixel'] = self.compute_photometric_loss(img_list,reconstructed_imgs_from_l,valid_masks_to_l) + \
+        #     self.compute_photometric_loss(img_list,reconstructed_imgs_from_r,valid_masks_to_r)
+        loss_pack['loss_depth_pixel'] = self.compute_photometric_depth_loss(img_list,reconstructed_imgs_from_l,img_l_list,valid_masks_to_l) + \
+            self.compute_photometric_depth_loss(img_list, reconstructed_imgs_from_r, img_r_list, valid_masks_to_r)
         # loss_pack['loss_depth_pixel'] = self.compute_photometric_loss_min(img_list, reconstructed_imgs_from_l, reconstructed_imgs_from_r)
 
         loss_pack['loss_depth_ssim'] = self.compute_ssim_loss(img_list,reconstructed_imgs_from_l,valid_masks_to_l) + \
@@ -215,4 +242,4 @@ class Model_depth(nn.Module):
         loss_pack['loss_depth_consis'] =  self.compute_consis_loss(predicted_depths_to_l, computed_depths_to_l) + \
             self.compute_consis_loss(predicted_depths_to_r, computed_depths_to_r)
 
-        return loss_pack
+        return mask_pack, loss_pack

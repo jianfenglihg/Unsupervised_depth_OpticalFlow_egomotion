@@ -165,35 +165,36 @@ def train(cfg, observer):
         if iter_ % cfg.log_interval == 0:
             visualizer.print_loss(loss_pack, iter_=iter_)
 
-        if iter_ and iter_ % cfg.vis_interval == 0:
-            observer.add_scalar('depth_photometric_loss', loss_pack['loss_depth_pixel'].mean().detach().cpu().numpy(), iter_)
-            observer.add_scalar('depth_ssim_loss', loss_pack['loss_depth_ssim'].mean().detach().cpu().numpy(), iter_)
-            observer.add_scalar('depth_smooth_loss', loss_pack['loss_depth_smooth'].mean().detach().cpu().numpy(), iter_)
-            observer.add_scalar('depth_consis_loss', loss_pack['loss_depth_consis'].mean().detach().cpu().numpy(), iter_)
-            
-            observer.add_scalar('flow_photometric_loss', loss_pack['loss_flow_pixel'].mean().detach().cpu().numpy(), iter_)
-            observer.add_scalar('flow_ssim_loss', loss_pack['loss_flow_ssim'].mean().detach().cpu().numpy(), iter_)
-            observer.add_scalar('flow_smooth_loss', loss_pack['loss_flow_smooth'].mean().detach().cpu().numpy(), iter_)
-            observer.add_scalar('flow_consis_loss', loss_pack['loss_flow_consis'].mean().detach().cpu().numpy(), iter_)
+        if cfg.mode == 'geom':
+            if iter_ and iter_ % cfg.vis_interval == 0:
+                observer.add_scalar('depth_photometric_loss', loss_pack['loss_depth_pixel'].mean().detach().cpu().numpy(), iter_)
+                observer.add_scalar('depth_ssim_loss', loss_pack['loss_depth_ssim'].mean().detach().cpu().numpy(), iter_)
+                observer.add_scalar('depth_smooth_loss', loss_pack['loss_depth_smooth'].mean().detach().cpu().numpy(), iter_)
+                observer.add_scalar('depth_consis_loss', loss_pack['loss_depth_consis'].mean().detach().cpu().numpy(), iter_)
+                
+                observer.add_scalar('flow_photometric_loss', loss_pack['loss_flow_pixel'].mean().detach().cpu().numpy(), iter_)
+                observer.add_scalar('flow_ssim_loss', loss_pack['loss_flow_ssim'].mean().detach().cpu().numpy(), iter_)
+                observer.add_scalar('flow_smooth_loss', loss_pack['loss_flow_smooth'].mean().detach().cpu().numpy(), iter_)
+                observer.add_scalar('flow_consis_loss', loss_pack['loss_flow_consis'].mean().detach().cpu().numpy(), iter_)
 
-            observer.add_scalar('depth_flow_consis', loss_pack['loss_depth_flow_consis'].mean().detach().cpu().numpy(), iter_)
-            observer.add_scalar('epipolar', loss_pack['loss_epipolar'].mean().detach().cpu().numpy(), iter_)
-            observer.add_scalar('pnp', loss_pack['loss_pnp'].mean().detach().cpu().numpy(), iter_)
-            observer.add_scalar('triangulate', loss_pack['loss_triangle'].mean().detach().cpu().numpy(), iter_)
+                observer.add_scalar('depth_flow_consis', loss_pack['loss_depth_flow_consis'].mean().detach().cpu().numpy(), iter_)
+                observer.add_scalar('epipolar', loss_pack['loss_epipolar'].mean().detach().cpu().numpy(), iter_)
+                observer.add_scalar('pnp', loss_pack['loss_pnp'].mean().detach().cpu().numpy(), iter_)
+                observer.add_scalar('triangulate', loss_pack['loss_triangle'].mean().detach().cpu().numpy(), iter_)
 
-            # image
-        if iter_ and iter_ % (cfg.vis_interval*10) == 0:
-            observer.add_image('origin_middle_image', mask_pack['origin_middle_image'], iter_)
-            observer.add_image('occ_fwd_mask', mask_pack['occ_fwd_mask'], iter_)
-            observer.add_image('dyna_fwd_mask', mask_pack['dyna_fwd_mask'], iter_)
-            observer.add_image('inlier_fwd_mask', mask_pack['inlier_fwd_mask'], iter_)
-            observer.add_image('rigid_fwd_mask', mask_pack['rigid_fwd_mask'], iter_)
-            observer.add_image('valid_fwd_mask', mask_pack['valid_fwd_mask'], iter_)
-            observer.add_image('valid_occ_fwd_mask', mask_pack['valid_occ_fwd_mask'], iter_)
+                # image
+            if iter_ and iter_ % (cfg.vis_interval*10) == 0:
+                observer.add_image('origin_middle_image', mask_pack['origin_middle_image'], iter_)
+                observer.add_image('occ_fwd_mask', mask_pack['occ_fwd_mask'], iter_)
+                observer.add_image('dyna_fwd_mask', mask_pack['dyna_fwd_mask'], iter_)
+                observer.add_image('inlier_fwd_mask', mask_pack['inlier_fwd_mask'], iter_)
+                observer.add_image('rigid_fwd_mask', mask_pack['rigid_fwd_mask'], iter_)
+                observer.add_image('valid_fwd_mask', mask_pack['valid_fwd_mask'], iter_)
+                observer.add_image('valid_occ_fwd_mask', mask_pack['valid_occ_fwd_mask'], iter_)
 
-            observer.add_image('pred_depth', visualizer.tensor2array(mask_pack['pred_depth_img']), iter_)
-            observer.add_image('pred_disp', visualizer.tensor2array(1/mask_pack['pred_depth_img'],max_value=None, colormap='bone'), iter_)
-            
+                observer.add_image('pred_depth', visualizer.tensor2array(mask_pack['pred_depth_img']), iter_)
+                observer.add_image('pred_disp', visualizer.tensor2array(1/mask_pack['pred_depth_img'],max_value=None, colormap='bone'), iter_)
+                
             
         loss_list = []
         for key in list(loss_pack.keys()):
