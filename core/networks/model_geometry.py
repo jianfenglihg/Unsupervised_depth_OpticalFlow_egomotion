@@ -349,19 +349,19 @@ class Model_geometry(nn.Module):
         return epipolar
         # return dist_map, epipolar
 
-    # def compute_epipolar_loss(self, dist_map, rigid_mask, inlier_mask):
+    def compute_epipolar_loss(self, dist_map, rigid_mask, inlier_mask):
 
-    #     loss = (dist_map * (rigid_mask - inlier_mask)).mean((1,2,3)) / \
-    #          (rigid_mask - inlier_mask).mean((1,2,3))
-
-    #     return loss
-
-    def compute_epipolar_loss(self, dist_map, rigid_mask):
-    
-        # loss = (dist_map*rigid_mask).mean((1,2,3)) / (rigid_mask.mean((1,2,3)) + 1e-12)
-        loss = dist_map.mean((1,2,3))
+        loss = (dist_map * (rigid_mask - inlier_mask)).mean((1,2,3)) / \
+             ((rigid_mask - inlier_mask).mean((1,2,3)) + 1e-4)
 
         return loss
+
+    # def compute_epipolar_loss(self, dist_map, rigid_mask):
+    
+        # loss = (dist_map*rigid_mask).mean((1,2,3)) / (rigid_mask.mean((1,2,3)) + 1e-12)
+        # loss = dist_map.mean((1,2,3))
+
+        # return loss
 
     def get_rigid_mask(self, dist_map):
         with torch.no_grad():
@@ -761,8 +761,8 @@ class Model_geometry(nn.Module):
 
 
         # select points for geometry calculation
-        filtered_matches_fwd, filtered_depth_fwd = self.sample_match(optical_flows_fwd[0], disp_list[0], rigid_score_fwd)
-        filtered_matches_bwd, filtered_depth_bwd = self.sample_match(optical_flows_bwd[0], disp_list[0], rigid_score_bwd)
+        # filtered_matches_fwd, filtered_depth_fwd = self.sample_match(optical_flows_fwd[0], disp_list[0], rigid_score_fwd)
+        # filtered_matches_bwd, filtered_depth_bwd = self.sample_match(optical_flows_bwd[0], disp_list[0], rigid_score_bwd)
 
 
         # loss function
@@ -815,24 +815,24 @@ class Model_geometry(nn.Module):
         # loss_pack['loss_flow_consis'] = torch.zeros([2]).to(img_l.get_device()).requires_grad_()
         
         # fusion geom
-        loss_pack['loss_depth_flow_consis'] = self.compute_depth_flow_consis_loss(flow_diff_bwd, bwd_mask, 1) + \
-            self.compute_depth_flow_consis_loss(flow_diff_fwd, fwd_mask, 1)
+        # loss_pack['loss_depth_flow_consis'] = self.compute_depth_flow_consis_loss(flow_diff_bwd, bwd_mask, 1) + \
+            # self.compute_depth_flow_consis_loss(flow_diff_fwd, fwd_mask, 1)
         # loss_pack['loss_depth_flow_consis'] = self.compute_depth_flow_consis_loss(flow_diff_bwd, valid_masks_to_l, 1) + \
         #     self.compute_depth_flow_consis_loss(flow_diff_fwd, valid_masks_to_r, 1)
-        # loss_pack['loss_depth_flow_consis'] = torch.zeros([2]).to(img_l.get_device()).requires_grad_()
+        loss_pack['loss_depth_flow_consis'] = torch.zeros([2]).to(img_l.get_device()).requires_grad_()
 
-        loss_pack['loss_epipolar'] = self.compute_epipolar_loss(dist_map_bwd, bwd_mask[0]) + \
-            self.compute_epipolar_loss(dist_map_fwd, fwd_mask[0])
+        loss_pack['loss_epipolar'] = self.compute_epipolar_loss(dist_map_bwd, rigid_mask_bwd, inlier_mask_bwd) + \
+            self.compute_epipolar_loss(dist_map_fwd, rigid_mask_fwd, inlier_mask_fwd)
         # loss_pack['loss_epipolar'] = self.compute_epipolar_loss(epipolar_bwd, valid_mask_bwd[0]) + \
-        #     self.compute_epipolar_loss(epipolar_fwd, valid_mask_fwd[0])
+            # self.compute_epipolar_loss(epipolar_fwd, valid_mask_fwd[0])
         # loss_pack['loss_epipolar'] = torch.zeros([2]).to(img_l.get_device()).requires_grad_()
 
         # loss_pack['loss_triangle'] = self.compute_triangulate_loss(optical_flows_bwd, pose_vec_bwd, K, K_inv, disp_list, disp_l_list) + \
         #     self.compute_triangulate_loss(optical_flows_fwd, pose_vec_fwd, K, K_inv, disp_list, disp_r_list)
         loss_pack['loss_triangle'] = torch.zeros([2]).to(img_l.get_device()).requires_grad_()
 
-        loss_pack['loss_pnp'] = self.compute_pnp_loss(filtered_depth_bwd, filtered_matches_bwd, pose_vec_bwd, K, K_inv) + \
-            self.compute_pnp_loss(filtered_depth_fwd, filtered_matches_fwd, pose_vec_fwd, K, K_inv)
-        # loss_pack['loss_pnp'] = torch.zeros([2]).to(img_l.get_device()).requires_grad_()
+        # loss_pack['loss_pnp'] = self.compute_pnp_loss(filtered_depth_bwd, filtered_matches_bwd, pose_vec_bwd, K, K_inv) + \
+            # self.compute_pnp_loss(filtered_depth_fwd, filtered_matches_fwd, pose_vec_fwd, K, K_inv)
+        loss_pack['loss_pnp'] = torch.zeros([2]).to(img_l.get_device()).requires_grad_()
 
         return loss_pack, mask_pack
