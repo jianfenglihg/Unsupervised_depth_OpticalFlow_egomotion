@@ -286,17 +286,26 @@ class Model_geometry(nn.Module):
         optical_flow = self.pwc_model(feature_list_1, feature_list_2, img_hw)[0]
         return optical_flow
 
-    def meshgrid(self, h, w):
-        xx, yy = np.meshgrid(np.arange(0,w), np.arange(0,h))
-        meshgrid = np.transpose(np.stack([xx,yy], axis=-1), [2,0,1]) # [2,h,w]
-        meshgrid = torch.from_numpy(meshgrid)
-        return meshgrid
+    # def meshgrid(self, h, w):
+    #     xx, yy = np.meshgrid(np.arange(0,w), np.arange(0,h))
+    #     meshgrid = np.transpose(np.stack([xx,yy], axis=-1), [2,0,1]) # [2,h,w]
+    #     meshgrid = torch.from_numpy(meshgrid)
+    #     return meshgrid
+
+    def meshgrid(self, B, H, W):
+        xx = torch.arange(0, W).view(1,-1).repeat(H,1)
+        yy = torch.arange(0, H).view(-1,1).repeat(1,W)
+        xx = xx.view(1,1,H,W).repeat(B,1,1,1)
+        yy = yy.view(1,1,H,W).repeat(B,1,1,1)
+        grid = torch.cat((xx,yy),1).float()
+        return grid
 
     def compute_epipolar_map(self, pose, flow, intrinsics, intrinsics_inverse):
         b,_,h,w = flow.size()
         batch_size, flow_h, flow_w = flow.shape[0], flow.shape[2], flow.shape[3]
-        grid = self.meshgrid(h, w).float().to(flow.get_device()).unsqueeze(0).repeat(b,1,1,1) #[b,2,h,w]
-        corres = torch.cat([(grid[:,0,:,:] + flow[:,0,:,:]).unsqueeze(1), (grid[:,1,:,:] + flow[:,1,:,:]).unsqueeze(1)], 1)
+        grid = self.meshgrid(b, h, w).to(flow.get_device()) #[b,2,h,w]
+        corres = grid + flow
+        # corres = torch.cat([(grid[:,0,:,:] + flow[:,0,:,:]).unsqueeze(1), (grid[:,1,:,:] + flow[:,1,:,:]).unsqueeze(1)], 1)
         match = torch.cat([grid, corres], 1) # [b,4,h,w]
         match = match.view([b,4,-1]) # [b,4,n]
         # mask = mask.view([b,1,-1]) # [b,1,n] 
@@ -394,7 +403,7 @@ class Model_geometry(nn.Module):
     def sample_match(self, flow, depth, mask):
         b,_,h,w = flow.size()
         depth = depth.view([b,1,-1])
-        grid = self.meshgrid(h, w).float().to(flow.get_device()).unsqueeze(0).repeat(b,1,1,1) #[b,2,h,w]
+        grid = self.meshgrid(b, h, w).to(flow.get_device()) #[b,2,h,w]
         corres = torch.cat([(grid[:,0,:,:] + flow[:,0,:,:]).unsqueeze(1), (grid[:,1,:,:] + flow[:,1,:,:]).unsqueeze(1)], 1)
         match = torch.cat([grid, corres], 1) # [b,4,h,w]
         match = match.view([b,4,-1]) # [b,4,n]
@@ -471,7 +480,7 @@ class Model_geometry(nn.Module):
         # match: [b, 4, num] P1: [b, 3, 4]
         # Match is in the image coordinates. P1, P2 is camera parameters. [B, 3, 4] match: [B, M, 4]
         b,_,h,w = flow.size()
-        grid = self.meshgrid(h, w).float().to(flow.get_device()).unsqueeze(0).repeat(b,1,1,1) #[b,2,h,w]
+        grid = self.meshgrid(b, h, w).to(flow.get_device()) #[b,2,h,w]
         corres = torch.cat([(grid[:,0,:,:] + flow[:,0,:,:]).unsqueeze(1), (grid[:,1,:,:] + flow[:,1,:,:]).unsqueeze(1)], 1)
         match = torch.cat([grid, corres], 1) # [b,4,h,w]
         match = match.view([b,4,-1]) # [b,4,n]
@@ -508,7 +517,7 @@ class Model_geometry(nn.Module):
     def get_reproj_fdp_loss(self, pred1, pred2, P2, K, K_inv, valid_mask, rigid_mask, flow, visualizer=None):
         # pred: [b,1,h,w] Rt: [b,3,4] K: [b,3,3] mask: [b,1,h,w] flow: [b,2,h,w]
         b, h, w = pred1.shape[0], pred1.shape[2], pred1.shape[3]
-        xy = self.meshgrid(h,w).unsqueeze(0).repeat(b,1,1,1).float().to(flow.get_device()) # [b,2,h,w]
+        xy = self.meshgrid(b,h,w).to(flow.get_device()) # [b,2,h,w]
         ones = torch.ones([b,1,h,w]).float().to(flow.get_device())
         pts1_3d = K_inv.bmm(torch.cat([xy, ones], 1).view([b,3,-1])) * pred1.view([b,1,-1]) # [b,3,h*w]
         pts2_coord, pts2_depth = self.reproject(P2, torch.cat([pts1_3d, ones.view([b,1,-1])], 1).transpose(1,2)) # [b,h*w, 2]
@@ -752,8 +761,8 @@ class Model_geometry(nn.Module):
 
 
         # select points for geometry calculation
-        # filtered_matches_fwd, filtered_depth_fwd = self.sample_match(optical_flows_fwd[0], disp_list[0], rigid_score_fwd)
-        # filtered_matches_bwd, filtered_depth_bwd = self.sample_match(optical_flows_bwd[0], disp_list[0], rigid_score_bwd)
+        filtered_matches_fwd, filtered_depth_fwd = self.sample_match(optical_flows_fwd[0], disp_list[0], rigid_score_fwd)
+        filtered_matches_bwd, filtered_depth_bwd = self.sample_match(optical_flows_bwd[0], disp_list[0], rigid_score_bwd)
 
 
         # loss function
@@ -822,8 +831,8 @@ class Model_geometry(nn.Module):
         #     self.compute_triangulate_loss(optical_flows_fwd, pose_vec_fwd, K, K_inv, disp_list, disp_r_list)
         loss_pack['loss_triangle'] = torch.zeros([2]).to(img_l.get_device()).requires_grad_()
 
-        # loss_pack['loss_pnp'] = self.compute_pnp_loss(filtered_depth_bwd, filtered_matches_bwd, pose_vec_bwd, K, K_inv) + \
-            # self.compute_pnp_loss(filtered_depth_fwd, filtered_matches_fwd, pose_vec_fwd, K, K_inv)
-        loss_pack['loss_pnp'] = torch.zeros([2]).to(img_l.get_device()).requires_grad_()
+        loss_pack['loss_pnp'] = self.compute_pnp_loss(filtered_depth_bwd, filtered_matches_bwd, pose_vec_bwd, K, K_inv) + \
+            self.compute_pnp_loss(filtered_depth_fwd, filtered_matches_fwd, pose_vec_fwd, K, K_inv)
+        # loss_pack['loss_pnp'] = torch.zeros([2]).to(img_l.get_device()).requires_grad_()
 
         return loss_pack, mask_pack
