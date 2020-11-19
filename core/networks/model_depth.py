@@ -189,8 +189,8 @@ class Model_depth(nn.Module):
 
     def infer_depth(self, img):
         disp_list = self.depth_net(img)
-        depth = self.disp2depth(disp_list[0])
-        return depth
+        # depth = self.disp2depth(disp_list[0])
+        return disp_list[0]
 
 
     def forward(self, inputs):
