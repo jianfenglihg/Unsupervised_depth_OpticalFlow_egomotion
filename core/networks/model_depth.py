@@ -241,7 +241,9 @@ class Model_depth(nn.Module):
         loss_pack['loss_depth_smooth'] = self.compute_smooth_loss(img, disp_list) + self.compute_smooth_loss(img_l, disp_l_list) + \
             self.compute_smooth_loss(img_r, disp_r_list)
 
-        loss_pack['loss_depth_consis'] =  self.compute_consis_loss(predicted_depths_to_l, computed_depths_to_l) + \
-            self.compute_consis_loss(predicted_depths_to_r, computed_depths_to_r)
+        #loss_pack['loss_depth_consis'] =  self.compute_consis_loss(predicted_depths_to_l, computed_depths_to_l) + \
+        #    self.compute_consis_loss(predicted_depths_to_r, computed_depths_to_r)
+
+        loss_pack['loss_depth_consis'] = torch.zeros([2]).to(img_l.get_device()).requires_grad_()
 
         return loss_pack,mask_pack

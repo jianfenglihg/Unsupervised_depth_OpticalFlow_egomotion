@@ -102,6 +102,8 @@ def test_eigen_depth(cfg, model):
     pred_disp_list = []
     for i in range(len(filenames)):
         path1, idx, _ = filenames[i].strip().split(' ')
+        #tmp_path = os.path.join(os.path.join(cfg.raw_base_dir, path1), 'image_02/data/'+str(idx)+'.png')
+        #print(tmp_path)
         img = cv2.imread(os.path.join(os.path.join(cfg.raw_base_dir, path1), 'image_02/data/'+str(idx)+'.png'))
         #img_resize = cv2.resize(img, (832,256))
         img_resize = cv2.resize(img, (cfg.img_hw[1], cfg.img_hw[0]))
