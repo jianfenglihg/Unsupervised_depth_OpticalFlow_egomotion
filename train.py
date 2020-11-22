@@ -181,6 +181,8 @@ def train(cfg, observer):
                 observer.add_scalar('epipolar', loss_pack['loss_epipolar'].mean().detach().cpu().numpy(), iter_)
                 observer.add_scalar('pnp', loss_pack['loss_pnp'].mean().detach().cpu().numpy(), iter_)
                 observer.add_scalar('triangulate', loss_pack['loss_triangle'].mean().detach().cpu().numpy(), iter_)
+                observer.add_scalar('8_point', loss_pack['loss_eight_point'].mean().detach().cpu().numpy(), iter_)
+
 
                 # image
             if iter_ and iter_ % (cfg.vis_interval*10) == 0:

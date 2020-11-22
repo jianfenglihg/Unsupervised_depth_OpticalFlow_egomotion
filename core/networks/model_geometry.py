@@ -43,6 +43,7 @@ class Model_geometry(nn.Module):
 
         self.beta = cfg.pose_beta
         # self.bpnp = BPnP_m3d.apply
+        # self.filter = reduced_ransac(check_num=cfg.ransac_points, thres=self.inlier_thres, dataset=cfg.dataset)
     
     def get_flow_norm(self, flow, p=2):
         '''
@@ -402,13 +403,13 @@ class Model_geometry(nn.Module):
 
     def sample_match(self, flow, depth, mask):
         b,_,h,w = flow.size()
-        depth = depth.view([b,1,-1])
+        depth = depth.view([b,1,-1]).contiguous()
         grid = self.meshgrid(b, h, w).to(flow.get_device()) #[b,2,h,w]
         corres = torch.cat([(grid[:,0,:,:] + flow[:,0,:,:]).unsqueeze(1), (grid[:,1,:,:] + flow[:,1,:,:]).unsqueeze(1)], 1)
         match = torch.cat([grid, corres], 1) # [b,4,h,w]
-        match = match.view([b,4,-1]) # [b,4,n]
+        match = match.view([b,4,-1]).contiguous() # [b,4,n]
 
-        mask = mask.view([b,1,-1])
+        mask = mask.view([b,1,-1]).contiguous()    # jianfeng add contiguous
 
         match_by_top_ratio, depth_by_top_ratio, top_ratio_mask = self.top_ratio_sample(match, depth, mask, self.ratio)
         sampled_match, sampled_depth, end_num = self.robust_rand_sample(match_by_top_ratio, depth_by_top_ratio, top_ratio_mask, self.num)
@@ -473,6 +474,26 @@ class Model_geometry(nn.Module):
         # orientation_loss = F.mse_loss(orientation, orientation_target, reduction='none')
         loss = position_loss + self.beta * orientation_loss
 
+        return loss
+
+    def compute_eight_point_loss(self, matches, pose_vec, intrinsics, intrinsics_inverse):
+        b = matches.shape[0]
+        check_match = matches.contiguous()
+
+        cv_f = []
+        for i in range(b):
+            if self.dataset == 'nyuv2':
+                f, m = cv2.findFundamentalMat(check_match[i,:2,:].transpose(0,1).detach().cpu().numpy(), check_match[i,2:,:].transpose(0,1).detach().cpu().numpy(), cv2.FM_LMEDS, 0.99)
+            else:
+                f, m = cv2.findFundamentalMat(check_match[i,:2,:].transpose(0,1).detach().cpu().numpy(), check_match[i,2:,:].transpose(0,1).detach().cpu().numpy(), cv2.FM_RANSAC, 0.1, 0.99)
+            cv_f.append(f)
+        cv_f = np.stack(cv_f, axis=0)
+        cv_f = torch.from_numpy(cv_f).float().to(matches.get_device())
+
+        E = compute_essential_matrix(pose_vec)
+        F_meta = E.bmm(intrinsics_inverse)
+        F = torch.inverse(intrinsics.permute([0, 2, 1])).bmm(F_meta)
+        loss = F.smooth_l1_loss(F, cv_f)
         return loss
 
     
@@ -761,8 +782,8 @@ class Model_geometry(nn.Module):
 
 
         # select points for geometry calculation
-        # filtered_matches_fwd, filtered_depth_fwd = self.sample_match(optical_flows_fwd[0], disp_list[0], rigid_score_fwd)
-        # filtered_matches_bwd, filtered_depth_bwd = self.sample_match(optical_flows_bwd[0], disp_list[0], rigid_score_bwd)
+        filtered_matches_fwd, filtered_depth_fwd = self.sample_match(optical_flows_fwd[0], disp_list[0], rigid_score_fwd)
+        filtered_matches_bwd, filtered_depth_bwd = self.sample_match(optical_flows_bwd[0], disp_list[0], rigid_score_bwd)
 
 
         # loss function
@@ -821,18 +842,21 @@ class Model_geometry(nn.Module):
         #     self.compute_depth_flow_consis_loss(flow_diff_fwd, valid_masks_to_r, 1)
         loss_pack['loss_depth_flow_consis'] = torch.zeros([2]).to(img_l.get_device()).requires_grad_()
 
-        loss_pack['loss_epipolar'] = self.compute_epipolar_loss(dist_map_bwd, rigid_mask_bwd, inlier_mask_bwd) + \
-            self.compute_epipolar_loss(dist_map_fwd, rigid_mask_fwd, inlier_mask_fwd)
+        # loss_pack['loss_epipolar'] = self.compute_epipolar_loss(dist_map_bwd, rigid_mask_bwd, inlier_mask_bwd) + \
+            # self.compute_epipolar_loss(dist_map_fwd, rigid_mask_fwd, inlier_mask_fwd)
         # loss_pack['loss_epipolar'] = self.compute_epipolar_loss(epipolar_bwd, valid_mask_bwd[0]) + \
             # self.compute_epipolar_loss(epipolar_fwd, valid_mask_fwd[0])
-        # loss_pack['loss_epipolar'] = torch.zeros([2]).to(img_l.get_device()).requires_grad_()
+        loss_pack['loss_epipolar'] = torch.zeros([2]).to(img_l.get_device()).requires_grad_()
 
         # loss_pack['loss_triangle'] = self.compute_triangulate_loss(optical_flows_bwd, pose_vec_bwd, K, K_inv, disp_list, disp_l_list) + \
-        #     self.compute_triangulate_loss(optical_flows_fwd, pose_vec_fwd, K, K_inv, disp_list, disp_r_list)
+            # self.compute_triangulate_loss(optical_flows_fwd, pose_vec_fwd, K, K_inv, disp_list, disp_r_list)
         loss_pack['loss_triangle'] = torch.zeros([2]).to(img_l.get_device()).requires_grad_()
 
-        # loss_pack['loss_pnp'] = self.compute_pnp_loss(filtered_depth_bwd, filtered_matches_bwd, pose_vec_bwd, K, K_inv) + \
-            # self.compute_pnp_loss(filtered_depth_fwd, filtered_matches_fwd, pose_vec_fwd, K, K_inv)
-        loss_pack['loss_pnp'] = torch.zeros([2]).to(img_l.get_device()).requires_grad_()
+        loss_pack['loss_pnp'] = self.compute_pnp_loss(filtered_depth_bwd, filtered_matches_bwd, pose_vec_bwd, K, K_inv) + \
+            self.compute_pnp_loss(filtered_depth_fwd, filtered_matches_fwd, pose_vec_fwd, K, K_inv)
+        # loss_pack['loss_pnp'] = torch.zeros([2]).to(img_l.get_device()).requires_grad_()
+
+        loss_pack['loss_eight_point'] = self.compute_eight_point_loss(filtered_matches_bwd, pose_vec_bwd, K, K_inv) + \
+            self.compute_eight_point_loss(filtered_matches_fwd, pose_vec_fwd, K, K_inv)
 
         return loss_pack, mask_pack

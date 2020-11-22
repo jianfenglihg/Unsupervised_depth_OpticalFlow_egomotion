@@ -88,7 +88,8 @@ class Visualizer(object):
             loss_epipolar = loss_pack['loss_epipolar'].mean().detach().cpu().numpy()
             loss_triangle = loss_pack['loss_triangle'].mean().detach().cpu().numpy()
             loss_pnp = loss_pack['loss_pnp'].mean().detach().cpu().numpy()
-            print('iter: {4}, loss_pnp: {3:.6f}, loss_triangle: {2:.6f}, loss_epipolar: {1:.6f}, loss_depth_flow_consis: {0:.6f}'.format(loss_depth_flow_consis, loss_epipolar, loss_triangle, loss_pnp, iter_))
+            loss_8_point = loss_pack['loss_eight_point'].mean().detach().cpu().numpy()
+            print('iter: {5}, loss_8_point: {4:.6f}, loss_pnp: {3:.6f}, loss_triangle: {2:.6f}, loss_epipolar: {1:.6f}, loss_depth_flow_consis: {0:.6f}'.format(loss_depth_flow_consis, loss_epipolar, loss_triangle, loss_pnp, loss_8_point, iter_))
 
 class Visualizer_debug():
     def __init__(self, dump_dir=None, img1=None, img2=None):

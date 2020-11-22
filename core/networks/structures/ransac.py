@@ -42,15 +42,16 @@ class reduced_ransac(nn.Module):
 
 
     def forward(self, match, mask, visualizer=None):
-        # match: [B, 4, H, W] mask: [B, 1, H, W]
-        b, h, w = match.shape[0], match.shape[2], match.shape[3]
-        match = match.view([b, 4, -1]).contiguous()
-        mask = mask.view([b, 1, -1]).contiguous()
+        # match: [B, 4, n] mask: [B, 1, n]
+        b = match.shape[0]
+        # match = match.view([b, 4, -1]).contiguous()
+        # mask = mask.view([b, 1, -1]).contiguous()
         
         # Sample matches for RANSAC 8-point and best F selection
-        top_ratio_match, top_ratio_mask = self.top_ratio_sample(match, mask, ratio=0.20) # [b, 4, ratio*H*W] 
-        check_match, check_num = self.robust_rand_sample(top_ratio_match, top_ratio_mask, num=self.check_num) # [b, 4, check_num]
-        check_match = check_match.contiguous()
+        # top_ratio_match, top_ratio_mask = self.top_ratio_sample(match, mask, ratio=0.20) # [b, 4, ratio*H*W] 
+        # check_match, check_num = self.robust_rand_sample(top_ratio_match, top_ratio_mask, num=self.check_num) # [b, 4, check_num]
+        # check_match = check_match.contiguous()
+        check_match = match.contiguous()
 
         cv_f = []
         for i in range(b):
@@ -63,4 +64,27 @@ class reduced_ransac(nn.Module):
         cv_f = torch.from_numpy(cv_f).float().to(match.get_device())
         
         return cv_f
+    
+    # def forward(self, match, mask, visualizer=None):
+    #     # match: [B, 4, H, W] mask: [B, 1, H, W]
+    #     b, h, w = match.shape[0], match.shape[2], match.shape[3]
+    #     match = match.view([b, 4, -1]).contiguous()
+    #     mask = mask.view([b, 1, -1]).contiguous()
+        
+    #     # Sample matches for RANSAC 8-point and best F selection
+    #     top_ratio_match, top_ratio_mask = self.top_ratio_sample(match, mask, ratio=0.20) # [b, 4, ratio*H*W] 
+    #     check_match, check_num = self.robust_rand_sample(top_ratio_match, top_ratio_mask, num=self.check_num) # [b, 4, check_num]
+    #     check_match = check_match.contiguous()
+
+    #     cv_f = []
+    #     for i in range(b):
+    #         if self.dataset == 'nyuv2':
+    #             f, m = cv2.findFundamentalMat(check_match[i,:2,:].transpose(0,1).detach().cpu().numpy(), check_match[i,2:,:].transpose(0,1).detach().cpu().numpy(), cv2.FM_LMEDS, 0.99)
+    #         else:
+    #             f, m = cv2.findFundamentalMat(check_match[i,:2,:].transpose(0,1).detach().cpu().numpy(), check_match[i,2:,:].transpose(0,1).detach().cpu().numpy(), cv2.FM_RANSAC, 0.1, 0.99)
+    #         cv_f.append(f)
+    #     cv_f = np.stack(cv_f, axis=0)
+    #     cv_f = torch.from_numpy(cv_f).float().to(match.get_device())
+        
+    #     return cv_f
 
