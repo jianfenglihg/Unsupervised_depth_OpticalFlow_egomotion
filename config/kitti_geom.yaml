@@ -25,11 +25,23 @@ w_depth_ssim: 0.85
 w_depth_smooth: 10.0
 w_depth_consis: 0.1
 
+w_depth_flow_consis: 0.01
+w_epipolar: 0.002
+w_triangle: 0.1
+w_pnp: 0.1
+w_8point: 0.1
+
+flow_consist_alpha: 3.0
+flow_consist_beta: 0.05
+
 ransac_iters: 100
 ransac_points: 6000
 
+geometric_ratio: 0.3
+geometric_num: 6000
+
+pose_beta: 1
 
 # basic info
 img_hw: [256, 832]
 use_svd_gpu: False
-

@@ -171,13 +171,15 @@ class Model_geometry(nn.Module):
     #     loss = torch.cat(loss_list, 1).sum(1) # (B)
     #     return loss
 
-    def compute_consis_loss(self, predicted_depth_list, computed_depth_list):
+    def compute_consis_loss(self, predicted_depth_list, computed_depth_list, mask_list):
         loss_list = []
         for scale in range(self.num_scales):
-            predicted_depth, computed_depth = predicted_depth_list[scale], computed_depth_list[scale]
+            predicted_depth, computed_depth, mask = predicted_depth_list[scale], computed_depth_list[scale], mask_list[scale]
+            divider = mask.mean((1,2,3))
             depth_diff = ((computed_depth - predicted_depth).abs() /
                     (computed_depth + predicted_depth).abs()).clamp(0, 1)
-            loss_consis = depth_diff.mean((1,2,3)) # (B)
+            depth_diff = depth_diff * mask
+            loss_consis = depth_diff.mean((1,2,3)) / (divider + 1e-12) # (B)
             loss_list.append(loss_consis[:,None])
         loss = torch.cat(loss_list, 1).sum(1) # (B)
         return loss
@@ -535,29 +537,6 @@ class Model_geometry(nn.Module):
         return point_homo
 
 
-    def get_reproj_fdp_loss(self, pred1, pred2, P2, K, K_inv, valid_mask, rigid_mask, flow, visualizer=None):
-        # pred: [b,1,h,w] Rt: [b,3,4] K: [b,3,3] mask: [b,1,h,w] flow: [b,2,h,w]
-        b, h, w = pred1.shape[0], pred1.shape[2], pred1.shape[3]
-        xy = self.meshgrid(b,h,w).to(flow.get_device()) # [b,2,h,w]
-        ones = torch.ones([b,1,h,w]).float().to(flow.get_device())
-        pts1_3d = K_inv.bmm(torch.cat([xy, ones], 1).view([b,3,-1])) * pred1.view([b,1,-1]) # [b,3,h*w]
-        pts2_coord, pts2_depth = self.reproject(P2, torch.cat([pts1_3d, ones.view([b,1,-1])], 1).transpose(1,2)) # [b,h*w, 2]
-        # TODO Here some of the reprojection coordinates are invalid. (<0 or >max)
-        reproj_valid_mask = (pts2_coord > torch.Tensor([0,0]).to(pred1.get_device())).all(-1, True).float() * \
-            (pts2_coord < torch.Tensor([w-1,h-1]).to(pred1.get_device())).all(-1, True).float() # [b,h*w, 1]
-        reproj_valid_mask = (valid_mask * reproj_valid_mask.view([b,h,w,1]).permute([0,3,1,2])).detach()
-        rigid_mask = rigid_mask.detach()
-        pts2_depth = pts2_depth.transpose(1,2).view([b,1,h,w])
-
-        # Get the interpolated depth prediction2
-        pts2_coord_nor = torch.cat([2.0 * pts2_coord[:,:,0].unsqueeze(-1) / (w - 1.0) - 1.0, 2.0 * pts2_coord[:,:,1].unsqueeze(-1) / (h - 1.0) - 1.0], -1)
-        inter_depth2 = F.grid_sample(pred2, pts2_coord_nor.view([b, h, w, 2]), padding_mode='reflection') # [b,1,h,w]
-        pj_loss_map = (torch.abs(1.0 - pts2_depth / (inter_depth2 + 1e-12)) * rigid_mask * reproj_valid_mask)
-        pj_loss = pj_loss_map.mean((1,2,3)) / ((reproj_valid_mask * rigid_mask).mean((1,2,3))+1e-12)
-        #pj_loss = (valid_mask * mask * torch.abs(pts2_depth - inter_depth2) / (torch.abs(pts2_depth + inter_depth2)+1e-12)).mean((1,2,3)) / ((valid_mask * mask).mean((1,2,3))+1e-12) # [b]
-        flow_loss = (rigid_mask * torch.abs(flow + xy - pts2_coord.detach().permute(0,2,1).view([b,2,h,w]))).mean((1,2,3)) / (rigid_mask.mean((1,2,3)) + 1e-12)
-        return pj_loss, flow_loss
-
     def reproject(self, P, point3d):
         # P: [b,3,4] point3d: [b,n,4]
         point2d = P.bmm(point3d.transpose(1,2)) # [b,4,n]
@@ -614,6 +593,7 @@ class Model_geometry(nn.Module):
     
     def get_trian_loss(self, tri_depth, pred_tri_depth):
         # depth: [b,n,1]
+        # To Do: mask the dynamic part 
         loss = torch.pow(1.0 - pred_tri_depth / (tri_depth + 1e-12), 2).mean((1,2))
         return loss
 
@@ -621,19 +601,18 @@ class Model_geometry(nn.Module):
     def compute_triangulate_loss(self, flow, pose, K, K_inv, depth_pred1, depth_pred2):
         flow = flow[0]
         depth_pred1 = depth_pred1[0]
-        # depth_pred2 = depth_pred2[0]
+        depth_pred2 = depth_pred2[0]
         
         P1, P2 = compute_projection_matrix(pose,K)
         triangulated_point = self.midpoint_triangulate(flow,K,K_inv,P1,P2) # [b,n,4]
         point2d_1_coord, point2d_1_depth = self.reproject(P1, triangulated_point) # [b,n,2], [b,n,1]
-        #point2d_2_coord, point2d_2_depth = self.reproject(P2, triangulated_point)
+        point2d_2_coord, point2d_2_depth = self.reproject(P2, triangulated_point)
 
         rescaled_pred1, inter_pred1 = self.register_depth(depth_pred1, point2d_1_coord, point2d_1_depth)
-        #rescaled_pred2, inter_pred2 = self.register_depth(depth_pred2, point2d_2_coord, point2d_2_depth)
+        rescaled_pred2, inter_pred2 = self.register_depth(depth_pred2, point2d_2_coord, point2d_2_depth)
 
-        pt_depth_loss = self.get_trian_loss(point2d_1_depth, inter_pred1)# + self.get_trian_loss(point2d_2_depth, inter_pred2)
-        # pj_depth, flow_loss = self.get_reproj_fdp_loss(rescaled_pred1, rescaled_pred2, P2, K, K_inv, img1_valid_mask, img1_rigid_mask, fwd_flow, visualizer=visualizer)
-        return pt_depth_loss # + pj_depth + flow_loss
+        pt_depth_loss = self.get_trian_loss(point2d_1_depth, inter_pred1) + self.get_trian_loss(point2d_2_depth, inter_pred2)
+        return pt_depth_loss 
 
     def compute_dynamic_mask(self, intrinsics, depth, pose, flow):
         depth_0 = depth[0]
@@ -814,9 +793,9 @@ class Model_geometry(nn.Module):
             self.compute_smooth_loss(img_r, disp_r_list)
         #loss_pack['loss_depth_smooth'] = torch.zeros([2]).to(img_l.get_device()).requires_grad_()
 
-        # loss_pack['loss_depth_consis'] =  self.compute_consis_loss(predicted_depths_to_l, computed_depths_to_l) + \
-        #     self.compute_consis_loss(predicted_depths_to_r, computed_depths_to_r)
-        loss_pack['loss_depth_consis'] = torch.zeros([2]).to(img_l.get_device()).requires_grad_()
+        loss_pack['loss_depth_consis'] =  self.compute_consis_loss(predicted_depths_to_l, computed_depths_to_l, bwd_mask) + \
+            self.compute_consis_loss(predicted_depths_to_r, computed_depths_to_r, fwd_mask)
+        # loss_pack['loss_depth_consis'] = torch.zeros([2]).to(img_l.get_device()).requires_grad_()
 
 
         # flow
@@ -836,27 +815,28 @@ class Model_geometry(nn.Module):
         # loss_pack['loss_flow_consis'] = torch.zeros([2]).to(img_l.get_device()).requires_grad_()
         
         # fusion geom
-        # loss_pack['loss_depth_flow_consis'] = self.compute_depth_flow_consis_loss(flow_diff_bwd, bwd_mask, 1) + \
-            # self.compute_depth_flow_consis_loss(flow_diff_fwd, fwd_mask, 1)
+        loss_pack['loss_depth_flow_consis'] = self.compute_depth_flow_consis_loss(flow_diff_bwd, bwd_mask, 1) + \
+            self.compute_depth_flow_consis_loss(flow_diff_fwd, fwd_mask, 1)
         # loss_pack['loss_depth_flow_consis'] = self.compute_depth_flow_consis_loss(flow_diff_bwd, valid_masks_to_l, 1) + \
         #     self.compute_depth_flow_consis_loss(flow_diff_fwd, valid_masks_to_r, 1)
-        loss_pack['loss_depth_flow_consis'] = torch.zeros([2]).to(img_l.get_device()).requires_grad_()
+        # loss_pack['loss_depth_flow_consis'] = torch.zeros([2]).to(img_l.get_device()).requires_grad_()
 
-        # loss_pack['loss_epipolar'] = self.compute_epipolar_loss(dist_map_bwd, rigid_mask_bwd, inlier_mask_bwd) + \
-            # self.compute_epipolar_loss(dist_map_fwd, rigid_mask_fwd, inlier_mask_fwd)
+        loss_pack['loss_epipolar'] = self.compute_epipolar_loss(dist_map_bwd, rigid_mask_bwd, inlier_mask_bwd) + \
+            self.compute_epipolar_loss(dist_map_fwd, rigid_mask_fwd, inlier_mask_fwd)
         # loss_pack['loss_epipolar'] = self.compute_epipolar_loss(epipolar_bwd, valid_mask_bwd[0]) + \
             # self.compute_epipolar_loss(epipolar_fwd, valid_mask_fwd[0])
-        loss_pack['loss_epipolar'] = torch.zeros([2]).to(img_l.get_device()).requires_grad_()
+        # loss_pack['loss_epipolar'] = torch.zeros([2]).to(img_l.get_device()).requires_grad_()
 
-        # loss_pack['loss_triangle'] = self.compute_triangulate_loss(optical_flows_bwd, pose_vec_bwd, K, K_inv, disp_list, disp_l_list) + \
-            # self.compute_triangulate_loss(optical_flows_fwd, pose_vec_fwd, K, K_inv, disp_list, disp_r_list)
-        loss_pack['loss_triangle'] = torch.zeros([2]).to(img_l.get_device()).requires_grad_()
+        loss_pack['loss_triangle'] = self.compute_triangulate_loss(optical_flows_bwd, pose_vec_bwd, K, K_inv, disp_list, disp_l_list) + \
+            self.compute_triangulate_loss(optical_flows_fwd, pose_vec_fwd, K, K_inv, disp_list, disp_r_list)
+        # loss_pack['loss_triangle'] = torch.zeros([2]).to(img_l.get_device()).requires_grad_()
 
-        # loss_pack['loss_pnp'] = self.compute_pnp_loss(filtered_depth_bwd, filtered_matches_bwd, pose_vec_bwd, K, K_inv) + \
-            # self.compute_pnp_loss(filtered_depth_fwd, filtered_matches_fwd, pose_vec_fwd, K, K_inv)
-        loss_pack['loss_pnp'] = torch.zeros([2]).to(img_l.get_device()).requires_grad_()
+        loss_pack['loss_pnp'] = self.compute_pnp_loss(filtered_depth_bwd, filtered_matches_bwd, pose_vec_bwd, K, K_inv) + \
+            self.compute_pnp_loss(filtered_depth_fwd, filtered_matches_fwd, pose_vec_fwd, K, K_inv)
+        # loss_pack['loss_pnp'] = torch.zeros([2]).to(img_l.get_device()).requires_grad_()
 
         loss_pack['loss_eight_point'] = self.compute_eight_point_loss(filtered_matches_bwd, pose_vec_bwd, K, K_inv) + \
             self.compute_eight_point_loss(filtered_matches_fwd, pose_vec_fwd, K, K_inv)
+        # loss_pack['loss_eight_point'] = torch.zeros([2]).to(img_l.get_device()).requires_grad_()
 
         return loss_pack, mask_pack
