@@ -1,6 +1,6 @@
 import os, sys
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-from core.dataset import KITTI_2012, KITTI_2015
+from core.dataset import KITTI_2012, KITTI_2015, KITTI_pose
 from core.evaluation import eval_flow_avg, load_gt_flow_kitti
 from core.evaluation import eval_depth
 from core.visualize import Visualizer_debug
@@ -8,10 +8,11 @@ from core.networks import Model_depth_pose, Model_flow, Model_flowposenet, Model
 from core.evaluation import load_gt_flow_kitti, load_gt_mask
 import torch
 from tqdm import tqdm
-import pdb
+# import pdb
 import cv2
 import numpy as np
 import yaml
+from path import Path
 
 def test_kitti_2012(cfg, model, gt_flows, noc_masks):
     dataset = KITTI_2012(cfg.gt_2012_dir)
@@ -125,6 +126,87 @@ def test_eigen_depth(cfg, model):
         format(abs_rel, sq_rel, rms, log_rms, a1, a2, a3))
 
     return eval_depth_res
+
+
+def test_pose_odom(cfg, model):
+    print('Evaluate pose using kitti odom. Using model in '+cfg.model_dir)
+    dataset_dir = Path(cfg.kitti_odom_dir)
+    dataset = KITTI_pose(dataset_dir, cfg.sequences, 3)
+    print('{} snippets to test'.format(len(dataset)))
+    device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+
+    errors = np.zeros((len(dataset), 2), np.float32)
+    for j, sample in enumerate(tqdm(dataset)):
+        imgs = sample['imgs']
+
+        h,w,_ = imgs[0].shape
+       
+        if h != cfg.img_hw[1] or w != cfg.img_hw[0]:
+            imgs = [ cv2.resize(img, (cfg.img_hw[1], cfg.img_hw[0])).astype(np.float32) for img in imgs]
+
+        img_input = torch.from_numpy(img_resize / 255.0).float().cuda().unsqueeze(0).permute(0,3,1,2)
+        imgs = [np.transpose(img, (2,0,1)) for img in imgs]
+
+        ref_imgs = []
+        for i, img in enumerate(imgs):
+            img = torch.from_numpy(img).unsqueeze(0)
+            img = (img/255).to(device)
+            if i == len(imgs)//2:
+                tgt_img = img
+            else:
+                ref_imgs.append(img)
+
+        poses = pose_net(tgt_img, ref_imgs)
+
+        poses = poses.cpu()[0]
+        poses = torch.cat([poses[:len(imgs)//2], torch.zeros(1,6).float(), poses[len(imgs)//2:]])
+
+        inv_transform_matrices = pose_vec2mat(poses, rotation_mode=args.rotation_mode).numpy().astype(np.float64)
+
+        rot_matrices = np.linalg.inv(inv_transform_matrices[:,:,:3])
+        tr_vectors = -rot_matrices @ inv_transform_matrices[:,:,-1:]
+
+        transform_matrices = np.concatenate([rot_matrices, tr_vectors], axis=-1)
+
+        first_inv_transform = inv_transform_matrices[0]
+        final_poses = first_inv_transform[:,:3] @ transform_matrices
+        final_poses[:,:,-1:] += first_inv_transform[:,-1:]
+
+        if args.output_dir is not None:
+            predictions_array[j] = final_poses
+
+        ATE, RE = compute_pose_error(sample['poses'], final_poses)
+        errors[j] = ATE, RE
+
+    mean_errors = errors.mean(0)
+    std_errors = errors.std(0)
+    error_names = ['ATE','RE']
+    print('')
+    print("Results")
+    print("\t {:>10}, {:>10}".format(*error_names))
+    print("mean \t {:10.4f}, {:10.4f}".format(*mean_errors))
+    print("std \t {:10.4f}, {:10.4f}".format(*std_errors))
+
+    if args.output_dir is not None:
+        np.save(output_dir/'predictions.npy', predictions_array)
+
+
+def compute_pose_error(gt, pred):
+    RE = 0
+    snippet_length = gt.shape[0]
+    scale_factor = np.sum(gt[:,:,-1] * pred[:,:,-1])/np.sum(pred[:,:,-1] ** 2)
+    ATE = np.linalg.norm((gt[:,:,-1] - scale_factor * pred[:,:,-1]).reshape(-1))
+    for gt_pose, pred_pose in zip(gt, pred):
+        # Residual matrix to which we compute angle's sin and cos
+        R = gt_pose[:,:3] @ np.linalg.inv(pred_pose[:,:3])
+        s = np.linalg.norm([R[0,1]-R[1,0],
+                            R[1,2]-R[2,1],
+                            R[0,2]-R[2,0]])
+        c = np.trace(R) - 1
+        # Note: we actually compute double of cos and sin, but arctan2 is invariant to scale
+        RE += np.arctan2(s,c)
+
+    return ATE/snippet_length, RE/snippet_length
 
 
 def resize_disp(pred_disp_list, gt_depths):

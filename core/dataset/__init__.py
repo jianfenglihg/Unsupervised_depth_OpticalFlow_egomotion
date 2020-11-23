@@ -6,3 +6,4 @@ from kitti_2012 import KITTI_2012
 from kitti_2015 import KITTI_2015
 from nyu_v2 import NYU_Prepare, NYU_v2
 from kitti_odo import KITTI_Odo
+from kitti_pose import KITTI_pose
