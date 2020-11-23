@@ -26,7 +26,7 @@ w_depth_smooth: 10.0
 w_depth_consis: 0.1
 
 w_depth_flow_consis: 0.01
-w_epipolar: 0.002
+w_epipolar: 0.1
 w_triangle: 0.1
 w_pnp: 0.1
 w_8point: 0.1

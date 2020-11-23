@@ -499,15 +499,9 @@ class Model_geometry(nn.Module):
         return loss
 
     
-    def midpoint_triangulate(self, flow, K, K_inv, P1, P2):
+    def midpoint_triangulate(self, match, K, K_inv, P1, P2):
         # match: [b, 4, num] P1: [b, 3, 4]
         # Match is in the image coordinates. P1, P2 is camera parameters. [B, 3, 4] match: [B, M, 4]
-        b,_,h,w = flow.size()
-        grid = self.meshgrid(b, h, w).to(flow.get_device()) #[b,2,h,w]
-        corres = torch.cat([(grid[:,0,:,:] + flow[:,0,:,:]).unsqueeze(1), (grid[:,1,:,:] + flow[:,1,:,:]).unsqueeze(1)], 1)
-        match = torch.cat([grid, corres], 1) # [b,4,h,w]
-        match = match.view([b,4,-1]) # [b,4,n]
-
         b, n = match.shape[0], match.shape[2]
         RT1 = K_inv.bmm(P1) # [b, 3, 4]
         RT2 = K_inv.bmm(P2)
@@ -598,13 +592,12 @@ class Model_geometry(nn.Module):
         return loss
 
 
-    def compute_triangulate_loss(self, flow, pose, K, K_inv, depth_pred1, depth_pred2):
-        flow = flow[0]
+    def compute_triangulate_loss(self, match, pose, K, K_inv, depth_pred1, depth_pred2):
         depth_pred1 = depth_pred1[0]
         depth_pred2 = depth_pred2[0]
         
         P1, P2 = compute_projection_matrix(pose,K)
-        triangulated_point = self.midpoint_triangulate(flow,K,K_inv,P1,P2) # [b,n,4]
+        triangulated_point = self.midpoint_triangulate(match,K,K_inv,P1,P2) # [b,n,4]
         point2d_1_coord, point2d_1_depth = self.reproject(P1, triangulated_point) # [b,n,2], [b,n,1]
         point2d_2_coord, point2d_2_depth = self.reproject(P2, triangulated_point)
 
@@ -815,25 +808,25 @@ class Model_geometry(nn.Module):
         # loss_pack['loss_flow_consis'] = torch.zeros([2]).to(img_l.get_device()).requires_grad_()
         
         # fusion geom
-        loss_pack['loss_depth_flow_consis'] = self.compute_depth_flow_consis_loss(flow_diff_bwd, bwd_mask, 1) + \
-            self.compute_depth_flow_consis_loss(flow_diff_fwd, fwd_mask, 1)
+        # loss_pack['loss_depth_flow_consis'] = self.compute_depth_flow_consis_loss(flow_diff_bwd, bwd_mask, 1) + \
+        #     self.compute_depth_flow_consis_loss(flow_diff_fwd, fwd_mask, 1)
         # loss_pack['loss_depth_flow_consis'] = self.compute_depth_flow_consis_loss(flow_diff_bwd, valid_masks_to_l, 1) + \
         #     self.compute_depth_flow_consis_loss(flow_diff_fwd, valid_masks_to_r, 1)
-        # loss_pack['loss_depth_flow_consis'] = torch.zeros([2]).to(img_l.get_device()).requires_grad_()
+        loss_pack['loss_depth_flow_consis'] = torch.zeros([2]).to(img_l.get_device()).requires_grad_()
 
-        loss_pack['loss_epipolar'] = self.compute_epipolar_loss(dist_map_bwd, rigid_mask_bwd, inlier_mask_bwd) + \
-            self.compute_epipolar_loss(dist_map_fwd, rigid_mask_fwd, inlier_mask_fwd)
+        # loss_pack['loss_epipolar'] = self.compute_epipolar_loss(dist_map_bwd, rigid_mask_bwd, inlier_mask_bwd) + \
+        #     self.compute_epipolar_loss(dist_map_fwd, rigid_mask_fwd, inlier_mask_fwd)
         # loss_pack['loss_epipolar'] = self.compute_epipolar_loss(epipolar_bwd, valid_mask_bwd[0]) + \
             # self.compute_epipolar_loss(epipolar_fwd, valid_mask_fwd[0])
-        # loss_pack['loss_epipolar'] = torch.zeros([2]).to(img_l.get_device()).requires_grad_()
+        loss_pack['loss_epipolar'] = torch.zeros([2]).to(img_l.get_device()).requires_grad_()
 
-        loss_pack['loss_triangle'] = self.compute_triangulate_loss(optical_flows_bwd, pose_vec_bwd, K, K_inv, disp_list, disp_l_list) + \
-            self.compute_triangulate_loss(optical_flows_fwd, pose_vec_fwd, K, K_inv, disp_list, disp_r_list)
-        # loss_pack['loss_triangle'] = torch.zeros([2]).to(img_l.get_device()).requires_grad_()
+        # loss_pack['loss_triangle'] = self.compute_triangulate_loss(filtered_matches_bwd, pose_vec_bwd, K, K_inv, disp_list, disp_l_list) + \
+        #     self.compute_triangulate_loss(filtered_matches_fwd, pose_vec_fwd, K, K_inv, disp_list, disp_r_list)
+        loss_pack['loss_triangle'] = torch.zeros([2]).to(img_l.get_device()).requires_grad_()
 
-        loss_pack['loss_pnp'] = self.compute_pnp_loss(filtered_depth_bwd, filtered_matches_bwd, pose_vec_bwd, K, K_inv) + \
-            self.compute_pnp_loss(filtered_depth_fwd, filtered_matches_fwd, pose_vec_fwd, K, K_inv)
-        # loss_pack['loss_pnp'] = torch.zeros([2]).to(img_l.get_device()).requires_grad_()
+        # loss_pack['loss_pnp'] = self.compute_pnp_loss(filtered_depth_bwd, filtered_matches_bwd, pose_vec_bwd, K, K_inv) + \
+        #     self.compute_pnp_loss(filtered_depth_fwd, filtered_matches_fwd, pose_vec_fwd, K, K_inv)
+        loss_pack['loss_pnp'] = torch.zeros([2]).to(img_l.get_device()).requires_grad_()
 
         loss_pack['loss_eight_point'] = self.compute_eight_point_loss(filtered_matches_bwd, pose_vec_bwd, K, K_inv) + \
             self.compute_eight_point_loss(filtered_matches_fwd, pose_vec_fwd, K, K_inv)
