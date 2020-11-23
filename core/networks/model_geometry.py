@@ -492,8 +492,8 @@ class Model_geometry(nn.Module):
 
         E = compute_essential_matrix(pose_vec)
         F_meta = E.bmm(intrinsics_inverse)
-        F = torch.inverse(intrinsics.permute([0, 2, 1])).bmm(F_meta)
-        loss = F.smooth_l1_loss(F, cv_f)
+        F_pred = torch.inverse(intrinsics.permute([0, 2, 1])).bmm(F_meta)
+        loss = F.smooth_l1_loss(F_pred, cv_f)
         return loss
 
     
@@ -852,9 +852,9 @@ class Model_geometry(nn.Module):
             # self.compute_triangulate_loss(optical_flows_fwd, pose_vec_fwd, K, K_inv, disp_list, disp_r_list)
         loss_pack['loss_triangle'] = torch.zeros([2]).to(img_l.get_device()).requires_grad_()
 
-        loss_pack['loss_pnp'] = self.compute_pnp_loss(filtered_depth_bwd, filtered_matches_bwd, pose_vec_bwd, K, K_inv) + \
-            self.compute_pnp_loss(filtered_depth_fwd, filtered_matches_fwd, pose_vec_fwd, K, K_inv)
-        # loss_pack['loss_pnp'] = torch.zeros([2]).to(img_l.get_device()).requires_grad_()
+        # loss_pack['loss_pnp'] = self.compute_pnp_loss(filtered_depth_bwd, filtered_matches_bwd, pose_vec_bwd, K, K_inv) + \
+            # self.compute_pnp_loss(filtered_depth_fwd, filtered_matches_fwd, pose_vec_fwd, K, K_inv)
+        loss_pack['loss_pnp'] = torch.zeros([2]).to(img_l.get_device()).requires_grad_()
 
         loss_pack['loss_eight_point'] = self.compute_eight_point_loss(filtered_matches_bwd, pose_vec_bwd, K, K_inv) + \
             self.compute_eight_point_loss(filtered_matches_fwd, pose_vec_fwd, K, K_inv)
