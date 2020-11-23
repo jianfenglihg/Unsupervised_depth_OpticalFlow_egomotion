@@ -8,6 +8,7 @@ from __future__ import absolute_import, division, print_function
 
 import torch
 import torch.nn as nn
+from .attention import CAM_Module
 
 
 class PoseCNN(nn.Module):
@@ -33,11 +34,16 @@ class PoseCNN(nn.Module):
 
         self.net = nn.ModuleList(list(self.convs.values()))
 
+        # self.ac = CAM_Module(256)
+
     def forward(self, out):
 
         for i in range(self.num_convs):
             out = self.convs[i](out)
             out = self.relu(out)
+
+        # attention_feat = self.ac(out)
+        # out = self.pose_conv(attention_feat)
 
         out = self.pose_conv(out)
         out = out.mean(3).mean(2)
