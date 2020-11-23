@@ -235,16 +235,15 @@ class Model_depth(nn.Module):
             self.compute_photometric_depth_loss(img, reconstructed_imgs_from_r, img_r, valid_masks_to_r)
         # loss_pack['loss_depth_pixel'] = self.compute_photometric_loss_min(img_list, reconstructed_imgs_from_l, reconstructed_imgs_from_r)
 
-        #loss_pack['loss_depth_ssim'] = self.compute_ssim_loss(img,reconstructed_imgs_from_l,valid_masks_to_l) + \
-         #   self.compute_ssim_loss(img,reconstructed_imgs_from_r,valid_masks_to_r)
-        loss_pack['loss_depth_ssim'] = torch.zeros([2]).to(img_l.get_device()).requires_grad_()
+        loss_pack['loss_depth_ssim'] = self.compute_ssim_loss(img,reconstructed_imgs_from_l,valid_masks_to_l) + \
+           self.compute_ssim_loss(img,reconstructed_imgs_from_r,valid_masks_to_r)
+        # loss_pack['loss_depth_ssim'] = torch.zeros([2]).to(img_l.get_device()).requires_grad_()
 
         loss_pack['loss_depth_smooth'] = self.compute_smooth_loss(img, disp_list) + self.compute_smooth_loss(img_l, disp_l_list) + \
             self.compute_smooth_loss(img_r, disp_r_list)
 
-        #loss_pack['loss_depth_consis'] =  self.compute_consis_loss(predicted_depths_to_l, computed_depths_to_l) + \
-        #    self.compute_consis_loss(predicted_depths_to_r, computed_depths_to_r)
-
-        loss_pack['loss_depth_consis'] = torch.zeros([2]).to(img_l.get_device()).requires_grad_()
+        loss_pack['loss_depth_consis'] =  self.compute_consis_loss(predicted_depths_to_l, computed_depths_to_l) + \
+           self.compute_consis_loss(predicted_depths_to_r, computed_depths_to_r)
+        # loss_pack['loss_depth_consis'] = torch.zeros([2]).to(img_l.get_device()).requires_grad_()
 
         return loss_pack,mask_pack
