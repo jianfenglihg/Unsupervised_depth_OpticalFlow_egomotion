@@ -238,7 +238,7 @@ class Model_geometry(nn.Module):
             grad_disp_y *= torch.exp(-grad_img_y)
 
             grad_disp = grad_disp_x.mean((1,2,3)) + grad_disp_y.mean((1,2,3))
-            loss_list.append(grad_disp_x[:,None]) # (B)
+            loss_list.append(grad_disp[:,None]) # (B)
         
         loss = torch.cat(loss_list, 1).sum(1)
         return loss
