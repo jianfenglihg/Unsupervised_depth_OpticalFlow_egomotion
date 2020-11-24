@@ -808,11 +808,11 @@ class Model_geometry(nn.Module):
         # loss_pack['loss_flow_consis'] = torch.zeros([2]).to(img_l.get_device()).requires_grad_()
         
         # fusion geom
-        # loss_pack['loss_depth_flow_consis'] = self.compute_depth_flow_consis_loss(flow_diff_bwd, bwd_mask, 1) + \
-        #     self.compute_depth_flow_consis_loss(flow_diff_fwd, fwd_mask, 1)
+        loss_pack['loss_depth_flow_consis'] = self.compute_depth_flow_consis_loss(flow_diff_bwd, bwd_mask, 1) + \
+            self.compute_depth_flow_consis_loss(flow_diff_fwd, fwd_mask, 1)
         # loss_pack['loss_depth_flow_consis'] = self.compute_depth_flow_consis_loss(flow_diff_bwd, valid_masks_to_l, 1) + \
         #     self.compute_depth_flow_consis_loss(flow_diff_fwd, valid_masks_to_r, 1)
-        loss_pack['loss_depth_flow_consis'] = torch.zeros([2]).to(img_l.get_device()).requires_grad_()
+        # loss_pack['loss_depth_flow_consis'] = torch.zeros([2]).to(img_l.get_device()).requires_grad_()
 
         # loss_pack['loss_epipolar'] = self.compute_epipolar_loss(dist_map_bwd, rigid_mask_bwd, inlier_mask_bwd) + \
         #     self.compute_epipolar_loss(dist_map_fwd, rigid_mask_fwd, inlier_mask_fwd)
