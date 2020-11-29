@@ -209,18 +209,17 @@ class Model_depth(nn.Module):
         loss = torch.cat(loss_list, 1).sum(1)
         return loss
 
-    def compute_smooth_loss(self, imgs, disps):
+    def compute_smooth_loss(self, img, disps):
         # img: [b,3,h,w] depth: [b,1,h,w]
         """Computes the smoothness loss for a disparity image
         The color image is used for edge-aware smoothness
         """
         loss_list = []
-        # img_h, img_w = img.shape[2], img.shape[3] 
+        img_h, img_w = img.shape[2], img.shape[3] 
         for scale in range(self.num_scales):
-            img = imgs[scale]
             disp = disps[scale]
 
-            # disp = F.interpolate(disp, size=(img_h, img_w), mode='bilinear')
+            disp = F.interpolate(disp, size=(img_h, img_w), mode='bilinear')
             # depth_h, depth_w = disp.shape[2], disp.shape[3]
             # img = F.interpolate(img, size=(img_h, img_w), mode='bilinear')
 
@@ -249,8 +248,8 @@ class Model_depth(nn.Module):
 
     def infer_depth(self, img):
         disp_list = self.depth_net(img)
-        # depth = self.disp2depth(disp_list[0])
-        return disp_list[0]
+        depth = self.disp2depth(disp_list[0])
+        return depth
 
 
     def forward(self, inputs):
@@ -266,13 +265,17 @@ class Model_depth(nn.Module):
         img_r_list = self.generate_img_pyramid(img_r, self.num_scales)
 
         # depth infer
-        disp_l_list = self.depth_net(img_l) # Nscales * [B, 1, H, W]
-        disp_list = self.depth_net(img) 
-        disp_r_list = self.depth_net(img_r)
+        # disp_l_list = self.depth_net(img_l) # Nscales * [B, 1, H, W]
+        # disp_list = self.depth_net(img) 
+        # disp_r_list = self.depth_net(img_r)
 
-        depth_l_list = [self.disp2depth(disp) for disp in disp_l_list]
-        depth_list   = [self.disp2depth(disp) for disp in disp_list]
-        depth_r_list = [self.disp2depth(disp) for disp in disp_r_list]
+        depth_l_list = self.depth_net(img_l) # Nscales * [B, 1, H, W]
+        depth_list = self.depth_net(img) 
+        depth_r_list = self.depth_net(img_r)
+
+        # depth_l_list = [self.disp2depth(disp) for disp in disp_l_list]
+        # depth_list   = [self.disp2depth(disp) for disp in disp_list]
+        # depth_r_list = [self.disp2depth(disp) for disp in disp_r_list]
 
         # pose infer
         pose_inputs = torch.cat([img,img_l,img_r],1)
@@ -299,8 +302,8 @@ class Model_depth(nn.Module):
            self.compute_ssim_loss(img_list,reconstructed_imgs_from_r,valid_masks_to_r)
         # loss_pack['loss_depth_ssim'] = torch.zeros([2]).to(img_l.get_device()).requires_grad_()
 
-        loss_pack['loss_depth_smooth'] = self.compute_smooth_loss(img_list, disp_list) + self.compute_smooth_loss(img_l_list, disp_l_list) + \
-            self.compute_smooth_loss(img_r_list, disp_r_list)
+        loss_pack['loss_depth_smooth'] = self.compute_smooth_loss(img, disp_list) + self.compute_smooth_loss(img_l, disp_l_list) + \
+            self.compute_smooth_loss(img_r, disp_r_list)
 
         loss_pack['loss_depth_consis'] =  self.compute_consis_loss(predicted_depths_to_l, computed_depths_to_l) + \
            self.compute_consis_loss(predicted_depths_to_r, computed_depths_to_r)
