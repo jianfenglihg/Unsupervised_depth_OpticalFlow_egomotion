@@ -685,6 +685,7 @@ class Model_geometry(nn.Module):
         depth_0 = depth[0]
         dynamic_masks = []
         flow_diffs = []
+        flow_diff_scores = []
         for scale in range(self.num_scales):
             
             depth_scale = depth[scale]
@@ -703,8 +704,9 @@ class Model_geometry(nn.Module):
                 dyna_mask = (self.get_flow_norm(flow_diff) < consist_bound).float()
                 dynamic_masks.append(dyna_mask)
                 flow_diff_score = dyna_mask * (1.0 / (1e-4 + self.get_flow_norm(flow_diff)))
+                flow_diff_scores.append(flow_diff_score)
 
-        return flow_diffs, dynamic_masks, flow_diff_score
+        return flow_diffs, dynamic_masks, flow_diff_scores
 
 
     def compute_depth_flow_consis_loss(self, flow_diffs, masks=None, scales=3):
@@ -791,8 +793,8 @@ class Model_geometry(nn.Module):
         occ_mask_bwd, occ_mask_fwd, valid_mask_bwd, valid_mask_fwd = self.compute_occ_weight(img_warped_pyramid_from_l, img_list, img_warped_pyramid_from_r)
 
         # dynamic mask by d f consis
-        flow_diff_bwd, dynamic_masks_bwd, flow_diff_score_bwd = self.compute_dynamic_mask(K, disp_list, pose_vec_bwd, optical_flows_bwd)
-        flow_diff_fwd, dynamic_masks_fwd, flow_diff_score_fwd = self.compute_dynamic_mask(K, disp_list, pose_vec_fwd, optical_flows_fwd)
+        flow_diff_bwd, dynamic_masks_bwd, flow_diff_scores_bwd = self.compute_dynamic_mask(K, disp_list, pose_vec_bwd, optical_flows_bwd)
+        flow_diff_fwd, dynamic_masks_fwd, flow_diff_scores_fwd = self.compute_dynamic_mask(K, disp_list, pose_vec_fwd, optical_flows_fwd)
 
         # rigid mask by epipolar
         # dist_map_bwd = self.compute_epipolar_map(pose_vec_bwd, optical_flows_bwd[0], K, K_inv)
@@ -805,8 +807,8 @@ class Model_geometry(nn.Module):
         # select points for geometry calculation
         # filtered_matches_fwd, filtered_depth_fwd = self.sample_match(optical_flows_fwd[0], disp_list[0], rigid_score_fwd)
         # filtered_matches_bwd, filtered_depth_bwd = self.sample_match(optical_flows_bwd[0], disp_list[0], rigid_score_bwd)
-        filtered_matches_fwd, filtered_depth_fwd = self.sample_match(optical_flows_fwd[0], disp_list[0], flow_diff_score_fwd)
-        filtered_matches_bwd, filtered_depth_bwd = self.sample_match(optical_flows_bwd[0], disp_list[0], flow_diff_score_bwd)
+        filtered_matches_fwd, filtered_depth_fwd = self.sample_match(optical_flows_fwd[0], disp_list[0], flow_diff_scores_fwd[0])
+        filtered_matches_bwd, filtered_depth_bwd = self.sample_match(optical_flows_bwd[0], disp_list[0], flow_diff_scores_bwd[0])
 
 
         # compute epipolar loss by 8 point method
