@@ -702,8 +702,9 @@ class Model_geometry(nn.Module):
             with torch.no_grad():
                 dyna_mask = (self.get_flow_norm(flow_diff) < consist_bound).float()
                 dynamic_masks.append(dyna_mask)
+                flow_diff_score = dyna_mask * (1.0 / (1e-4 + self.get_flow_norm(flow_diff)))
 
-        return flow_diffs, dynamic_masks
+        return flow_diffs, dynamic_masks, flow_diff_score
 
 
     def compute_depth_flow_consis_loss(self, flow_diffs, masks=None, scales=3):
@@ -790,17 +791,30 @@ class Model_geometry(nn.Module):
         occ_mask_bwd, occ_mask_fwd, valid_mask_bwd, valid_mask_fwd = self.compute_occ_weight(img_warped_pyramid_from_l, img_list, img_warped_pyramid_from_r)
 
         # dynamic mask by d f consis
-        flow_diff_bwd, dynamic_masks_bwd = self.compute_dynamic_mask(K, disp_list, pose_vec_bwd, optical_flows_bwd)
-        flow_diff_fwd, dynamic_masks_fwd = self.compute_dynamic_mask(K, disp_list, pose_vec_fwd, optical_flows_fwd)
+        flow_diff_bwd, dynamic_masks_bwd, flow_diff_score_bwd = self.compute_dynamic_mask(K, disp_list, pose_vec_bwd, optical_flows_bwd)
+        flow_diff_fwd, dynamic_masks_fwd, flow_diff_score_fwd = self.compute_dynamic_mask(K, disp_list, pose_vec_fwd, optical_flows_fwd)
 
         # rigid mask by epipolar
-        dist_map_bwd = self.compute_epipolar_map(pose_vec_bwd, optical_flows_bwd[0], K, K_inv)
+        # dist_map_bwd = self.compute_epipolar_map(pose_vec_bwd, optical_flows_bwd[0], K, K_inv)
         # dist_map_bwd, epipolar_bwd = self.compute_epipolar_map(pose_vec_bwd, optical_flows_bwd[0], K, K_inv)
-        dist_map_fwd = self.compute_epipolar_map(pose_vec_fwd, optical_flows_fwd[0], K, K_inv)
+        # dist_map_fwd = self.compute_epipolar_map(pose_vec_fwd, optical_flows_fwd[0], K, K_inv)
         # dist_map_fwd, epipolar_fwd = self.compute_epipolar_map(pose_vec_fwd, optical_flows_fwd[0], K, K_inv)
+        # rigid_mask_bwd, inlier_mask_bwd, rigid_score_bwd = self.get_rigid_mask(dist_map_bwd)
+        # rigid_mask_fwd, inlier_mask_fwd, rigid_score_fwd = self.get_rigid_mask(dist_map_fwd)
+
+        # select points for geometry calculation
+        # filtered_matches_fwd, filtered_depth_fwd = self.sample_match(optical_flows_fwd[0], disp_list[0], rigid_score_fwd)
+        # filtered_matches_bwd, filtered_depth_bwd = self.sample_match(optical_flows_bwd[0], disp_list[0], rigid_score_bwd)
+        filtered_matches_fwd, filtered_depth_fwd = self.sample_match(optical_flows_fwd[0], disp_list[0], flow_diff_score_fwd)
+        filtered_matches_bwd, filtered_depth_bwd = self.sample_match(optical_flows_bwd[0], disp_list[0], flow_diff_score_bwd)
+
+
+        # compute epipolar loss by 8 point method
+        dist_map_bwd = self.compute_epipolar_map_8pF(filtered_matches_bwd, pose_vec_bwd, optical_flows_bwd[0], K, K_inv)
+        dist_map_fwd = self.compute_epipolar_map_8pF(filtered_matches_fwd, pose_vec_fwd, optical_flows_fwd[0], K, K_inv)
         rigid_mask_bwd, inlier_mask_bwd, rigid_score_bwd = self.get_rigid_mask(dist_map_bwd)
         rigid_mask_fwd, inlier_mask_fwd, rigid_score_fwd = self.get_rigid_mask(dist_map_fwd)
-
+        
         # fusion mask
         # fwd_mask = self.fusion_mask(valid_masks_to_r, occ_mask_fwd, dynamic_masks_fwd)
         # bwd_mask = self.fusion_mask(valid_masks_to_l, occ_mask_bwd, dynamic_masks_bwd)
@@ -827,16 +841,7 @@ class Model_geometry(nn.Module):
         # print(bwd_mask[0])
 
 
-        # select points for geometry calculation
-        filtered_matches_fwd, filtered_depth_fwd = self.sample_match(optical_flows_fwd[0], disp_list[0], rigid_score_fwd)
-        filtered_matches_bwd, filtered_depth_bwd = self.sample_match(optical_flows_bwd[0], disp_list[0], rigid_score_bwd)
-
-
-        # compute epipolar loss by 8 point method
-        dist_map_bwd = self.compute_epipolar_map_8pF(filtered_matches_bwd, pose_vec_bwd, optical_flows_bwd[0], K, K_inv)
-        dist_map_fwd = self.compute_epipolar_map_8pF(filtered_matches_fwd, pose_vec_fwd, optical_flows_fwd[0], K, K_inv)
-        rigid_mask_bwd, inlier_mask_bwd, rigid_score_bwd = self.get_rigid_mask(dist_map_bwd)
-        rigid_mask_fwd, inlier_mask_fwd, rigid_score_fwd = self.get_rigid_mask(dist_map_fwd)
+        
         
         # loss function
         loss_pack = {}
