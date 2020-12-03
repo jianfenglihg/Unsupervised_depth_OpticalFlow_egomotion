@@ -852,8 +852,6 @@ class Model_geometry(nn.Module):
         # print(bwd_mask[0])
 
 
-        
-        
         # loss function
         loss_pack = {}
         mask_pack = {}
