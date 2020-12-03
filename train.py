@@ -128,7 +128,7 @@ def train(cfg, observer):
     # training
     print('starting iteration: {}.'.format(cfg.iter_start))
     for iter_, inputs in enumerate(tqdm(dataloader)):
-        if (iter_ + 1) % cfg.test_interval == 0 and (not cfg.no_test):
+        if (iter_) % cfg.test_interval == 0 and (not cfg.no_test):
             model.eval()
             if args.multi_gpu:
                 model_eval = model.module
