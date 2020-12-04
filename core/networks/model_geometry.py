@@ -737,7 +737,18 @@ class Model_geometry(nn.Module):
 
         return fusion_mask
 
-    def fusion_mask_occ_valid(self, valid_mask, occ_mask):
+    def fusion_mask_4item(self, valid_mask, occ_mask, dynamic_mask, texture_mask):
+        fusion_mask = []
+        for scale in range(self.num_scales):
+            valid = valid_mask[scale]
+            occ = occ_mask[scale]
+            dyna = dynamic_mask[scale]
+            texture = texture_mask[scale]
+            mask = valid * occ * dyna * texture
+            fusion_mask.append(mask)
+        return fusion_mask
+
+    def fusion_mask_2item(self, valid_mask, occ_mask):
         fusion_mask = []
         for scale in range(self.num_scales):
             valid = valid_mask[scale]
@@ -832,12 +843,14 @@ class Model_geometry(nn.Module):
 
         # fwd_mask = self.fusion_mask(valid_mask_fwd, occ_mask_fwd, dynamic_masks_fwd)
         # bwd_mask = self.fusion_mask(valid_mask_bwd, occ_mask_bwd, dynamic_masks_bwd)
+        fwd_mask = self.fusion_mask_4item(valid_mask_fwd, occ_mask_fwd, rigid_mask_fwd_list, texture_mask_fwd)
+        bwd_mask = self.fusion_mask_4item(valid_mask_bwd, occ_mask_bwd, rigid_mask_bwd_list, texture_mask_bwd)
 
-        fwd_mask = self.fusion_mask(valid_mask_fwd, occ_mask_fwd, rigid_mask_fwd_list)
-        bwd_mask = self.fusion_mask(valid_mask_bwd, occ_mask_bwd, rigid_mask_bwd_list)
+        # fwd_mask = self.fusion_mask(valid_mask_fwd, occ_mask_fwd, rigid_mask_fwd_list)
+        # bwd_mask = self.fusion_mask(valid_mask_bwd, occ_mask_bwd, rigid_mask_bwd_list)
 
-        fwd_mask_valid_occ = self.fusion_mask_occ_valid(valid_mask_fwd, occ_mask_fwd)
-        bwd_mask_valid_occ = self.fusion_mask_occ_valid(valid_mask_bwd, occ_mask_bwd)
+        fwd_mask_valid_occ = self.fusion_mask_2item(valid_mask_fwd, occ_mask_fwd)
+        bwd_mask_valid_occ = self.fusion_mask_2item(valid_mask_bwd, occ_mask_bwd)
 
         # print(bwd_mask[0].shape)
         # cv2.imwrite('./meta/bwd_mask.png', np.transpose(255*bwd_mask[0][0].cpu().detach().numpy(), [1,2,0]).astype(np.uint8))
@@ -861,7 +874,8 @@ class Model_geometry(nn.Module):
         mask_pack['inlier_fwd_mask'] = 255*inlier_mask_fwd[0].cpu().detach().numpy().astype(np.uint8)
         mask_pack['dyna_fwd_mask'] = 255*dynamic_masks_fwd[0][0].cpu().detach().numpy().astype(np.uint8)
         mask_pack['valid_fwd_mask'] = 255*valid_masks_to_r[0][0].cpu().detach().numpy().astype(np.uint8)
-        mask_pack['valid_occ_fwd_mask'] = 255*fwd_mask_valid_occ[0][0].cpu().detach().numpy().astype(np.uint8)
+        mask_pack['fwd_mask'] = 255*fwd_mask[0][0].cpu().detach().numpy().astype(np.uint8)
+        # mask_pack['valid_occ_fwd_mask'] = 255*fwd_mask_valid_occ[0][0].cpu().detach().numpy().astype(np.uint8)
         mask_pack['pred_depth_img'] = disp_list[0][0]
         mask_pack['origin_middle_image'] = img[0].cpu().detach().numpy()
 
