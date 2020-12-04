@@ -777,19 +777,16 @@ class Model_geometry(nn.Module):
         disp_list = self.depth_net(img) 
         disp_r_list = self.depth_net(img_r)
 
-
         # pose infer
         pose_inputs = torch.cat([img_l,img,img_r],1)
         pose_vectors = self.pose_net(pose_inputs)
         pose_vec_fwd = pose_vectors[:,1,:]
         pose_vec_bwd = pose_vectors[:,0,:]
 
-
         # flow infer
         feature_list_l, feature_list, feature_list_r = self.fpyramid(img_l), self.fpyramid(img), self.fpyramid(img_r)
         optical_flows_bwd = self.pwc_model(feature_list, feature_list_l, [img_h, img_w])
         optical_flows_fwd = self.pwc_model(feature_list, feature_list_r, [img_h, img_w])
-
 
         # calculate reconstructed image using depth and pose
         reconstructed_imgs_from_l, valid_masks_to_l, predicted_depths_to_l, computed_depths_to_l = \
@@ -841,28 +838,18 @@ class Model_geometry(nn.Module):
         # fwd_mask_valid_occ = self.fusion_mask_occ_valid(valid_masks_to_r, occ_mask_fwd)
         # bwd_mask_valid_occ = self.fusion_mask_occ_valid(valid_masks_to_l, occ_mask_bwd)
 
-        # fwd_mask = self.fusion_mask(valid_mask_fwd, occ_mask_fwd, dynamic_masks_fwd)
-        # bwd_mask = self.fusion_mask(valid_mask_bwd, occ_mask_bwd, dynamic_masks_bwd)
-        fwd_mask = self.fusion_mask_4item(valid_mask_fwd, occ_mask_fwd, rigid_mask_fwd_list, texture_mask_fwd)
-        bwd_mask = self.fusion_mask_4item(valid_mask_bwd, occ_mask_bwd, rigid_mask_bwd_list, texture_mask_bwd)
-
+        fwd_mask = self.fusion_mask(valid_mask_fwd, occ_mask_fwd, dynamic_masks_fwd)
+        bwd_mask = self.fusion_mask(valid_mask_bwd, occ_mask_bwd, dynamic_masks_bwd)
+        # fwd_mask = self.fusion_mask_4item(valid_mask_fwd, occ_mask_fwd, rigid_mask_fwd_list, texture_mask_fwd)
+        # bwd_mask = self.fusion_mask_4item(valid_mask_bwd, occ_mask_bwd, rigid_mask_bwd_list, texture_mask_bwd)
         # fwd_mask = self.fusion_mask(valid_mask_fwd, occ_mask_fwd, rigid_mask_fwd_list)
         # bwd_mask = self.fusion_mask(valid_mask_bwd, occ_mask_bwd, rigid_mask_bwd_list)
 
+        fwd_mask_texture = self.fusion_mask_2item(fwd_mask, texture_mask_fwd)
+        bwd_mask_texture = self.fusion_mask_2item(bwd_mask, texture_mask_bwd)
+
         fwd_mask_valid_occ = self.fusion_mask_2item(valid_mask_fwd, occ_mask_fwd)
         bwd_mask_valid_occ = self.fusion_mask_2item(valid_mask_bwd, occ_mask_bwd)
-
-        # print(bwd_mask[0].shape)
-        # cv2.imwrite('./meta/bwd_mask.png', np.transpose(255*bwd_mask[0][0].cpu().detach().numpy(), [1,2,0]).astype(np.uint8))
-        # cv2.imwrite('./meta/fwd_mask.png', np.transpose(255*fwd_mask[0][0].cpu().detach().numpy(), [1,2,0]).astype(np.uint8))
-        # cv2.imwrite('./meta/valid_masks_to_l.png', np.transpose(255*valid_masks_to_l[0][0].cpu().detach().numpy(), [1,2,0]).astype(np.uint8))
-        # cv2.imwrite('./meta/valid_masks_to_r.png', np.transpose(255*valid_masks_to_r[0][0].cpu().detach().numpy(), [1,2,0]).astype(np.uint8))
-        # cv2.imwrite('./meta/valid_mask_bwd.png', np.transpose(255*valid_mask_bwd[0][0].cpu().detach().numpy(), [1,2,0]).astype(np.uint8))
-        # cv2.imwrite('./meta/inlier_mask_fwd.png', np.transpose(255*inlier_mask_fwd[0].cpu().detach().numpy(), [1,2,0]).astype(np.uint8))
-        # cv2.imwrite('./meta/rigid_mask_fwd.png', np.transpose(255*rigid_mask_fwd[0].cpu().detach().numpy(), [1,2,0]).astype(np.uint8))
-        # cv2.imwrite('./meta/occ_mask_bwd.png', np.transpose(255*occ_mask_bwd[0][0].cpu().detach().numpy(), [1,2,0]).astype(np.uint8))
-        # cv2.imwrite('./meta/dynamic_masks_bwd.png', np.transpose(255*dynamic_masks_bwd[0][0].cpu().detach().numpy(), [1,2,0]).astype(np.uint8))
-        # print(bwd_mask[0])
 
 
         # loss function
@@ -875,27 +862,27 @@ class Model_geometry(nn.Module):
         mask_pack['dyna_fwd_mask'] = 255*dynamic_masks_fwd[0][0].cpu().detach().numpy().astype(np.uint8)
         mask_pack['valid_fwd_mask'] = 255*valid_masks_to_r[0][0].cpu().detach().numpy().astype(np.uint8)
         mask_pack['fwd_mask'] = 255*fwd_mask[0][0].cpu().detach().numpy().astype(np.uint8)
-        # mask_pack['valid_occ_fwd_mask'] = 255*fwd_mask_valid_occ[0][0].cpu().detach().numpy().astype(np.uint8)
+        mask_pack['texture_mask_fwd'] = 255*texture_mask_fwd[0][0].cpu().detach().numpy().astype(np.uint8)
         mask_pack['pred_depth_img'] = disp_list[0][0]
         mask_pack['origin_middle_image'] = img[0].cpu().detach().numpy()
 
         # depth and pose
-        # loss_pack['loss_depth_pixel'] = self.compute_photometric_loss(img_list,reconstructed_imgs_from_l,bwd_mask) + \
-            # self.compute_photometric_loss(img_list,reconstructed_imgs_from_r,fwd_mask)
-        loss_pack['loss_depth_pixel'] = self.compute_photometric_depth_loss(img_list,reconstructed_imgs_from_l,img_l_list,bwd_mask) + \
-            self.compute_photometric_depth_loss(img_list, reconstructed_imgs_from_r, img_r_list, fwd_mask)
+        loss_pack['loss_depth_pixel'] = self.compute_photometric_loss(img_list,reconstructed_imgs_from_l,bwd_mask_texture) + \
+            self.compute_photometric_loss(img_list,reconstructed_imgs_from_r,fwd_mask_texture)
+        # loss_pack['loss_depth_pixel'] = self.compute_photometric_depth_loss(img_list,reconstructed_imgs_from_l,img_l_list,bwd_mask) + \
+            # self.compute_photometric_depth_loss(img_list, reconstructed_imgs_from_r, img_r_list, fwd_mask)
         #loss_pack['loss_depth_pixel'] = torch.zeros([2]).to(img_l.get_device()).requires_grad_()
 
-        loss_pack['loss_depth_ssim'] = self.compute_ssim_loss(img_list,reconstructed_imgs_from_l,bwd_mask) + \
-            self.compute_ssim_loss(img_list,reconstructed_imgs_from_r,fwd_mask)
+        loss_pack['loss_depth_ssim'] = self.compute_ssim_loss(img_list,reconstructed_imgs_from_l,bwd_mask_texture) + \
+            self.compute_ssim_loss(img_list,reconstructed_imgs_from_r,fwd_mask_texture)
         # loss_pack['loss_depth_ssim'] = torch.zeros([2]).to(img_l.get_device()).requires_grad_()
 
         loss_pack['loss_depth_smooth'] = self.compute_smooth_loss(img, disp_list) + self.compute_smooth_loss(img_l, disp_l_list) + \
             self.compute_smooth_loss(img_r, disp_r_list)
         #loss_pack['loss_depth_smooth'] = torch.zeros([2]).to(img_l.get_device()).requires_grad_()
 
-        loss_pack['loss_depth_consis'] =  self.compute_consis_loss(predicted_depths_to_l, computed_depths_to_l, bwd_mask) + \
-            self.compute_consis_loss(predicted_depths_to_r, computed_depths_to_r, fwd_mask)
+        loss_pack['loss_depth_consis'] =  self.compute_consis_loss(predicted_depths_to_l, computed_depths_to_l, bwd_mask_texture) + \
+            self.compute_consis_loss(predicted_depths_to_r, computed_depths_to_r, fwd_mask_texture)
         # loss_pack['loss_depth_consis'] = torch.zeros([2]).to(img_l.get_device()).requires_grad_()
 
 
@@ -916,8 +903,8 @@ class Model_geometry(nn.Module):
         # loss_pack['loss_flow_consis'] = torch.zeros([2]).to(img_l.get_device()).requires_grad_()
         
         # fusion geom
-        loss_pack['loss_depth_flow_consis'] = self.compute_depth_flow_consis_loss(flow_diff_bwd, bwd_mask, self.num_scales) + \
-            self.compute_depth_flow_consis_loss(flow_diff_fwd, fwd_mask, self.num_scales)
+        loss_pack['loss_depth_flow_consis'] = self.compute_depth_flow_consis_loss(flow_diff_bwd, bwd_mask_texture, self.num_scales) + \
+            self.compute_depth_flow_consis_loss(flow_diff_fwd, fwd_mask_texture, self.num_scales)
         # loss_pack['loss_depth_flow_consis'] = self.compute_depth_flow_consis_loss(flow_diff_bwd, bwd_mask, 1) + \
         #     self.compute_depth_flow_consis_loss(flow_diff_fwd, fwd_mask, 1)
         # loss_pack['loss_depth_flow_consis'] = self.compute_depth_flow_consis_loss(flow_diff_bwd, valid_masks_to_l, 1) + \
@@ -941,7 +928,7 @@ class Model_geometry(nn.Module):
         loss_pack['loss_pnp'] = torch.zeros([2]).to(img_l.get_device()).requires_grad_()
 
         # loss_pack['loss_eight_point'] = self.compute_eight_point_loss(filtered_matches_bwd, pose_vec_bwd, K, K_inv) + \
-            # self.compute_eight_point_loss(filtered_matches_fwd, pose_vec_fwd, K, K_inv)
+        #     self.compute_eight_point_loss(filtered_matches_fwd, pose_vec_fwd, K, K_inv)
         loss_pack['loss_eight_point'] = torch.zeros([2]).to(img_l.get_device()).requires_grad_()
 
         return loss_pack, mask_pack
