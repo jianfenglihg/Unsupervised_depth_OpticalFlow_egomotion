@@ -41,10 +41,17 @@ class PoseCNN(nn.Module):
         for i in range(self.num_convs):
             out = self.convs[i](out)
             out = self.relu(out)
+<<<<<<< HEAD
 
         # attention_feat = self.ac(out)
         # out = self.pose_conv(attention_feat)
 
+=======
+        
+        # attention_feat = self.ac(out)
+        # out = self.pose_conv(attention_feat)
+        
+>>>>>>> f308197fce48444ebac0b0fd2099bee9cd073749
         out = self.pose_conv(out)
         out = out.mean(3).mean(2)
 

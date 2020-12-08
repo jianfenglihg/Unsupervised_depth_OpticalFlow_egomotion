@@ -94,7 +94,8 @@ def train(cfg, observer):
     visualizer = Visualizer(loss_weights_dict, cfg.log_dump_dir)
 
     # load dataset
-    data_dir = os.path.join(cfg.prepared_base_dir, cfg.prepared_save_dir)
+    data_dir = os.path.join(cfg.prepared_base_dir)
+    # data_dir = os.path.join(cfg.prepared_base_dir, cfg.prepared_save_dir)
     if not os.path.exists(os.path.join(data_dir, 'train.txt')):
         if cfg.dataset == 'kitti_depth':
             kitti_raw_dataset = KITTI_RAW(cfg.raw_base_dir, cfg.static_frames_txt, cfg.test_scenes_txt)
@@ -226,7 +227,7 @@ if __name__ == '__main__':
     arg_parser.add_argument('--batch_size', type=int, default=8, help='batch size.')
     arg_parser.add_argument('--iter_start', type=int, default=0, help='starting iteration.')
     arg_parser.add_argument('--lr', type=float, default=0.0001, help='learning rate')
-    arg_parser.add_argument('--num_workers', type=int, default=4, help='number of workers.')
+    arg_parser.add_argument('--num_workers', type=int, default=0, help='number of workers.')
     arg_parser.add_argument('--log_interval', type=int, default=100, help='interval for printing loss.')
     arg_parser.add_argument('--test_interval', type=int, default=2000, help='interval for evaluation.')
     arg_parser.add_argument('--save_interval', type=int, default=2000, help='interval for saving models.')
