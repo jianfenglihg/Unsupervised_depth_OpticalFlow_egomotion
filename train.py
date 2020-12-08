@@ -129,7 +129,7 @@ def train(cfg, observer):
     # training
     print('starting iteration: {}.'.format(cfg.iter_start))
     for iter_, inputs in enumerate(tqdm(dataloader)):
-        if (iter_ + 1) % cfg.test_interval == 0 and (not cfg.no_test):
+        if (iter_) % cfg.test_interval == 0 and (not cfg.no_test):
             model.eval()
             if args.multi_gpu:
                 model_eval = model.module
@@ -197,9 +197,10 @@ def train(cfg, observer):
                 observer.add_image('inlier_fwd_mask', mask_pack['inlier_fwd_mask'], iter_)
                 observer.add_image('rigid_fwd_mask', mask_pack['rigid_fwd_mask'], iter_)
                 observer.add_image('valid_fwd_mask', mask_pack['valid_fwd_mask'], iter_)
-                observer.add_image('valid_occ_fwd_mask', mask_pack['valid_occ_fwd_mask'], iter_)
+                observer.add_image('fwd_mask', mask_pack['fwd_mask'], iter_)
+                observer.add_image('texture_mask_fwd', mask_pack['texture_mask_fwd'], iter_)
 
-                observer.add_image('pred_depth', visualizer.tensor2array(mask_pack['pred_depth_img']), iter_)
+                observer.add_image('pred_depth', visualizer.tensor2array(mask_pack['pred_depth_img'],max_value=None, colormap='magma'), iter_)
                 observer.add_image('pred_disp', visualizer.tensor2array(1/mask_pack['pred_depth_img'],max_value=None, colormap='bone'), iter_)
                 
             

@@ -324,12 +324,12 @@ if __name__ == '__main__':
     elif args.mode == 'flowposenet':
         model = Model_flowposenet(cfg_new)
     
-    if args.task == 'demo':
-        model = Model_depth_pose(cfg_new)
+    # if args.task == 'demo':
+    #     model = Model_geometry(cfg_new)
 
     model.cuda()
     weights = torch.load(args.pretrained_model)
-    model.load_state_dict(weights['model_state_dict'])
+    model.load_state_dict(weights['model_state_dict'], strict=False)
     model.eval()
     print('Model Loaded.')
 
