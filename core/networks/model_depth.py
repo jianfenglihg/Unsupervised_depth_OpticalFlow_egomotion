@@ -283,17 +283,17 @@ class Model_depth(nn.Module):
         img_r_list = self.generate_img_pyramid(img_r, self.num_scales)
 
         # depth infer
-        # disp_l_list = self.depth_net(img_l) # Nscales * [B, 1, H, W]
-        # disp_list = self.depth_net(img) 
-        # disp_r_list = self.depth_net(img_r)
+        disp_l_list = self.depth_net(img_l) # Nscales * [B, 1, H, W]
+        disp_list = self.depth_net(img) 
+        disp_r_list = self.depth_net(img_r)
 
-        depth_l_list = self.depth_net(img_l) # Nscales * [B, 1, H, W]
-        depth_list = self.depth_net(img) 
-        depth_r_list = self.depth_net(img_r)
+        # depth_l_list = self.depth_net(img_l) # Nscales * [B, 1, H, W]
+        # depth_list = self.depth_net(img) 
+        # depth_r_list = self.depth_net(img_r)
 
-        # depth_l_list = [self.disp2depth(disp) for disp in disp_l_list]
-        # depth_list   = [self.disp2depth(disp) for disp in disp_list]
-        # depth_r_list = [self.disp2depth(disp) for disp in disp_r_list]
+        depth_l_list = [self.disp2depth(disp) for disp in disp_l_list]
+        depth_list   = [self.disp2depth(disp) for disp in disp_list]
+        depth_r_list = [self.disp2depth(disp) for disp in disp_r_list]
 
         # pose infer
         pose_inputs = torch.cat([img_l,img,img_r],1)
