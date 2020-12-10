@@ -147,10 +147,10 @@ def test_pose_odom(cfg, model):
         imgs = np.concatenate([imgl, img, imgr], 2)
         img_input = torch.from_numpy(imgs / 255.0).float().cuda().unsqueeze(0).permute(0,3,1,2)
 
-        poses = model(img_input)
+        poses = model.infer_pose(img_input)
 
-        poses = poses.cpu()[0]
-        poses = torch.cat([poses[:len(imgs)//2], torch.zeros(1,6).float(), poses[len(imgs)//2:]])
+        poses = poses.detach().cpu()[0]
+        poses = torch.cat([poses[0].view(-1,6), torch.zeros(1,6).float(), poses[1].view(-1,6)])
 
         inv_transform_matrices = pose_vec2mat(poses).numpy().astype(np.float64)
 
@@ -321,6 +321,8 @@ if __name__ == '__main__':
         gt_flows_2015, noc_masks_2015 = load_gt_flow_kitti(cfg_new.gt_2015_dir, 'kitti_2015')
         gt_masks_2015 = load_gt_mask(cfg_new.gt_2015_dir)
         flow_res = test_kitti_2015(cfg_new, model, gt_flows_2015, noc_masks_2015, gt_masks_2015)
+    elif args.task == 'kitti_pose':
+        test_pose_odom(cfg_new, model)
     elif args.task == 'nyuv2':
         test_images, test_gt_depths = load_nyu_test_data(cfg_new.nyu_test_dir)
         depth_res = test_nyu(cfg_new, model, test_images, test_gt_depths)

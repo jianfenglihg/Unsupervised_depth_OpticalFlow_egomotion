@@ -57,11 +57,7 @@ class CAM_Module(Module):
         self.chanel_in = in_dim
 
 
-<<<<<<< HEAD
-        self.gamma = Parameter(torch.zeros(1))
-=======
         # self.gamma = Parameter(torch.zeros(1))
->>>>>>> f308197fce48444ebac0b0fd2099bee9cd073749
         self.softmax  = Softmax(dim=-1)
     def forward(self,x):
         """
@@ -82,11 +78,7 @@ class CAM_Module(Module):
         out = torch.bmm(attention, proj_value)
         out = out.view(m_batchsize, C, height, width)
 
-<<<<<<< HEAD
-        out = self.gamma*out + x
-=======
         out = out + x
         # out = self.gamma*out + x
->>>>>>> f308197fce48444ebac0b0fd2099bee9cd073749
         return out
 

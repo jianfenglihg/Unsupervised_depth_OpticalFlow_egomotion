@@ -297,6 +297,10 @@ class Model_geometry(nn.Module):
         optical_flow = self.pwc_model(feature_list_1, feature_list_2, img_hw)[0]
         return optical_flow
 
+    def infer_pose(self, imgs):
+        pose = self.pose_net(imgs)
+        return pose
+
     # def meshgrid(self, h, w):
     #     xx, yy = np.meshgrid(np.arange(0,w), np.arange(0,h))
     #     meshgrid = np.transpose(np.stack([xx,yy], axis=-1), [2,0,1]) # [2,h,w]
