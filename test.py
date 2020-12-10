@@ -138,25 +138,13 @@ def test_pose_odom(cfg, model):
     errors = np.zeros((len(dataset), 2), np.float32)
     for j, sample in enumerate(tqdm(dataset)):
         imgs = sample['imgs']
+        imgl = cv2.resize(imgs[0], (cfg.img_hw[1], cfg.img_hw[0])).astype(np.float32)
+        img  = cv2.resize(imgs[1], (cfg.img_hw[1], cfg.img_hw[0])).astype(np.float32)
+        imgr = cv2.resize(imgs[2], (cfg.img_hw[1], cfg.img_hw[0])).astype(np.float32)
+        imgs = np.concatenate([imgl, img, imgr], 2)
+        img_input = torch.from_numpy(imgs / 255.0).float().cuda().unsqueeze(0).permute(0,3,1,2)
 
-        h,w,_ = imgs[0].shape
-       
-        if h != cfg.img_hw[1] or w != cfg.img_hw[0]:
-            imgs = [ cv2.resize(img, (cfg.img_hw[1], cfg.img_hw[0])).astype(np.float32) for img in imgs]
-
-        img_input = torch.from_numpy(img_resize / 255.0).float().cuda().unsqueeze(0).permute(0,3,1,2)
-        imgs = [np.transpose(img, (2,0,1)) for img in imgs]
-
-        ref_imgs = []
-        for i, img in enumerate(imgs):
-            img = torch.from_numpy(img).unsqueeze(0)
-            img = (img/255).to(device)
-            if i == len(imgs)//2:
-                tgt_img = img
-            else:
-                ref_imgs.append(img)
-
-        poses = pose_net(tgt_img, ref_imgs)
+        poses = model(img_input)
 
         poses = poses.cpu()[0]
         poses = torch.cat([poses[:len(imgs)//2], torch.zeros(1,6).float(), poses[len(imgs)//2:]])
@@ -172,23 +160,16 @@ def test_pose_odom(cfg, model):
         final_poses = first_inv_transform[:,:3] @ transform_matrices
         final_poses[:,:,-1:] += first_inv_transform[:,-1:]
 
-        if args.output_dir is not None:
-            predictions_array[j] = final_poses
-
         ATE, RE = compute_pose_error(sample['poses'], final_poses)
         errors[j] = ATE, RE
 
     mean_errors = errors.mean(0)
     std_errors = errors.std(0)
     error_names = ['ATE','RE']
-    print('')
     print("Results")
     print("\t {:>10}, {:>10}".format(*error_names))
     print("mean \t {:10.4f}, {:10.4f}".format(*mean_errors))
     print("std \t {:10.4f}, {:10.4f}".format(*std_errors))
-
-    if args.output_dir is not None:
-        np.save(output_dir/'predictions.npy', predictions_array)
 
 
 def compute_pose_error(gt, pred):
