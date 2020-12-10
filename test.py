@@ -6,6 +6,7 @@ from core.evaluation import eval_depth
 from core.visualize import Visualizer_debug
 from core.networks import Model_depth_pose, Model_flow, Model_flowposenet, Model_depth, Model_geometry
 from core.evaluation import load_gt_flow_kitti, load_gt_mask
+from core.networks.structures.inverse_warp import pose_vec2mat 
 import torch
 from tqdm import tqdm
 # import pdb
@@ -151,7 +152,7 @@ def test_pose_odom(cfg, model):
         poses = poses.cpu()[0]
         poses = torch.cat([poses[:len(imgs)//2], torch.zeros(1,6).float(), poses[len(imgs)//2:]])
 
-        inv_transform_matrices = pose_vec2mat(poses, rotation_mode=args.rotation_mode).numpy().astype(np.float64)
+        inv_transform_matrices = pose_vec2mat(poses).numpy().astype(np.float64)
 
         rot_matrices = np.linalg.inv(inv_transform_matrices[:,:,:3])
         tr_vectors = -rot_matrices @ inv_transform_matrices[:,:,-1:]
