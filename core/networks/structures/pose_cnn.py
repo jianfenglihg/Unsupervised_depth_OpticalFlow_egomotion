@@ -46,7 +46,7 @@ class PoseCNN(nn.Module):
 
         self.refine_net = nn.ModuleList(list(self.refine_convs.values()))
 
-        self.refine_pose_conv = nn.Conv2d(256, 6 * (num_input_frames - 1), 1)
+        self.refine_pose_conv = nn.Conv2d(6 * (num_input_frames - 1), 6 * (num_input_frames - 1), 1)
 
 
     def atten_refine(self, inputs):
