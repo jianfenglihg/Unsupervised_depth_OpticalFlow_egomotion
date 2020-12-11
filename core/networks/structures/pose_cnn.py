@@ -32,9 +32,49 @@ class PoseCNN(nn.Module):
 
         self.relu = nn.ReLU(True)
 
-        self.net = nn.ModuleList(list(self.convs.values()))
+        # self.net = nn.ModuleList(list(self.convs.values()))
 
         # self.ac = CAM_Module(256)
+        self.query_fc = nn.Linear(14,14)
+        self.key_fc   = nn.Linear(14,14)
+        self.value_fc = nn.Linear(14,14)
+
+        self.refine_convs = {}
+        self.refine_convs[0] = nn.Conv2d(12* (num_input_frames - 1), 6 * (num_input_frames - 1),1,1,0)
+        self.refine_convs[1] = nn.Conv2d(6 * (num_input_frames - 1), 6 * (num_input_frames - 1),3,1,1)
+        self.refine_convs[2] = nn.Conv2d(6 * (num_input_frames - 1), 6 * (num_input_frames - 1),3,1,1)
+        self.refine_convs[3] = nn.Conv2d(6 * (num_input_frames - 1), 6 * (num_input_frames - 1),3,1,1)
+
+        self.refine_pose_conv = nn.Conv2d(256, 6 * (num_input_frames - 1), 1)
+
+
+    def atten_refine(self, inputs):
+        B,C,H,W = inputs.size()
+        inputs = inputs.view([B,C,H*W]) # B C N
+
+        query = self.query_fc(inputs)
+        key   = self.key_fc(inputs)
+        value = self.value_fc(inputs)
+
+        energy = torch.bmm(query, key.permute([0,2,1]))
+        p_mat  = nn.functional.softmax(energy, 1)
+
+        output = torch.bmm(p_mat, value)
+        output = torch.cat([inputs, output], 1).view([B,2*C,H,W])
+
+        for i in range(len(self.convs)):
+            output = self.refine_convs[i](output)
+            output = self.relu(output)
+
+        refine_output = self.refine_pose_conv(output)
+
+        refine_output = refine_output.mean(3).mean(2)
+        refine_output = 0.01 * refine_output.view(-1, self.num_input_frames - 1, 6) # B 2 1 6
+        
+        return refine_output
+        
+
+
 
     def forward(self, out):
 
@@ -42,14 +82,11 @@ class PoseCNN(nn.Module):
             out = self.convs[i](out)
             out = self.relu(out)
         
-        # attention_feat = self.ac(out)
-        # out = self.pose_conv(attention_feat)
-        
         out = self.pose_conv(out)
+
+        delta = self.atten_refine(out)
+
         out = out.mean(3).mean(2)
-
         out = 0.01 * out.view(-1, self.num_input_frames - 1, 6) # B 2 1 6
-        # axisangle = out[..., :3]
-        # translation = out[..., 3:]
 
-        return out
+        return out+delta
