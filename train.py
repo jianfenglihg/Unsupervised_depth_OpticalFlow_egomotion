@@ -75,6 +75,10 @@ def train(cfg, observer):
                 print(k)
                 v.requires_grad = False
 
+    for k,v in model.named_parameters():
+        if v.requires_grad = True:
+            print(k)
+
     
     optimizer = torch.optim.Adam([{'params': filter(lambda p: p.requires_grad, model.parameters()), 'lr': cfg.lr}])
 
