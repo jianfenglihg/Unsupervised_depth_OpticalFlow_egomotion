@@ -76,7 +76,7 @@ def train(cfg, observer):
                 v.requires_grad = False
 
     for k,v in model.named_parameters():
-        if v.requires_grad = True:
+        if v.requires_grad == True:
             print(k)
 
     
