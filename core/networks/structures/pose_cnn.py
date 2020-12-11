@@ -63,7 +63,7 @@ class PoseCNN(nn.Module):
         output = torch.bmm(p_mat, value)
         output = torch.cat([inputs, output], 1).view([B,2*C,H,W])
 
-        for i in range(len(self.convs)):
+        for i in range(len(self.refine_convs)):
             output = self.refine_convs[i](output)
             output = self.relu(output)
 
