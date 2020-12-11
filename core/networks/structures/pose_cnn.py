@@ -32,9 +32,8 @@ class PoseCNN(nn.Module):
 
         self.relu = nn.ReLU(True)
 
-        # self.net = nn.ModuleList(list(self.convs.values()))
+        self.net = nn.ModuleList(list(self.convs.values()))
 
-        # self.ac = CAM_Module(256)
         self.query_fc = nn.Linear(14,14)
         self.key_fc   = nn.Linear(14,14)
         self.value_fc = nn.Linear(14,14)
