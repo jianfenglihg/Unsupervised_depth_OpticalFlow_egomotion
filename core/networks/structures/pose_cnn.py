@@ -44,6 +44,8 @@ class PoseCNN(nn.Module):
         self.refine_convs[2] = nn.Conv2d(6 * (num_input_frames - 1), 6 * (num_input_frames - 1),3,1,1)
         self.refine_convs[3] = nn.Conv2d(6 * (num_input_frames - 1), 6 * (num_input_frames - 1),3,1,1)
 
+        self.refine_net = nn.ModuleList(list(self.refine_convs.values()))
+
         self.refine_pose_conv = nn.Conv2d(256, 6 * (num_input_frames - 1), 1)
 
 
