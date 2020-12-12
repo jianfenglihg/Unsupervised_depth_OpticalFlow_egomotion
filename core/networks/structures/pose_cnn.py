@@ -32,9 +32,8 @@ class PoseCNN(nn.Module):
 
         self.relu = nn.ReLU(True)
 
-        # self.net = nn.ModuleList(list(self.convs.values()))
+        self.net = nn.ModuleList(list(self.convs.values()))
 
-        # self.ac = CAM_Module(256)
         self.query_fc = nn.Linear(14,14)
         self.key_fc   = nn.Linear(14,14)
         self.value_fc = nn.Linear(14,14)
@@ -45,7 +44,9 @@ class PoseCNN(nn.Module):
         self.refine_convs[2] = nn.Conv2d(6 * (num_input_frames - 1), 6 * (num_input_frames - 1),3,1,1)
         self.refine_convs[3] = nn.Conv2d(6 * (num_input_frames - 1), 6 * (num_input_frames - 1),3,1,1)
 
-        self.refine_pose_conv = nn.Conv2d(256, 6 * (num_input_frames - 1), 1)
+        self.refine_net = nn.ModuleList(list(self.refine_convs.values()))
+
+        self.refine_pose_conv = nn.Conv2d(6 * (num_input_frames - 1), 6 * (num_input_frames - 1), 1)
 
 
     def atten_refine(self, inputs):
@@ -62,7 +63,7 @@ class PoseCNN(nn.Module):
         output = torch.bmm(p_mat, value)
         output = torch.cat([inputs, output], 1).view([B,2*C,H,W])
 
-        for i in range(len(self.convs)):
+        for i in range(len(self.refine_convs)):
             output = self.refine_convs[i](output)
             output = self.relu(output)
 
