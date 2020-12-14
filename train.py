@@ -15,6 +15,7 @@ from tqdm import tqdm
 import shutil
 import pickle
 import pdb
+import math
 
 from tensorboardX import SummaryWriter
 
@@ -27,6 +28,24 @@ def load_model(model_dir, filename, model, optimizer):
     model.load_state_dict(data['model_state_dict'])
     optimizer.load_state_dict(data['optimizer_state_dict'])
     return iter_, model, optimizer
+
+def Dynamic_weight_averaging(loss_value_pack, loss_weight_pack,T=1):
+    r = {}
+    for key in list(loss_value_pack['t'].keys()):
+        Lt_2 = loss_value_pack['t-2'][key].mean().detach().cpu().numpy()
+        Lt_1 = loss_value_pack['t-1'][key].mean().detach().cpu().numpy()
+        rtmp = Lt_1/Lt_2
+        r[key] = rtmp/T
+
+    r_sum = 0
+    # n = len(list(r.keys()))
+    for key in list(r.keys()):
+        r_sum += math.exp(r[key])
+
+    for key in list(r.keys()):
+        loss_weight_pack[key] = loss_weight_pack[key] * math.exp(r[key])/r_sum
+    
+    return loss_weight_pack
 
 def train(cfg, observer):
     # load model and optimizer
@@ -91,6 +110,8 @@ def train(cfg, observer):
     
    
     loss_weights_dict = generate_loss_weights_dict(cfg)
+    loss_value_dict   = {}
+
     visualizer = Visualizer(loss_weights_dict, cfg.log_dump_dir)
 
     # load dataset
@@ -199,8 +220,21 @@ def train(cfg, observer):
 
                 observer.add_image('pred_depth', visualizer.tensor2array(mask_pack['pred_depth_img']), iter_)
                 observer.add_image('pred_disp', visualizer.tensor2array(1/mask_pack['pred_depth_img'],max_value=None, colormap='bone'), iter_)
-                
-            
+        
+        if iter_ == 0:
+            loss_value_dict['t-2'] = loss_pack
+        elif iter_ == 1:
+            loss_value_dict['t-1'] = loss_pack
+        elif iter_ == 2:
+            loss_value_dict['t'] = loss_pack
+        else:
+            loss_value_dict['t-2'] = loss_value_dict['t-1']
+            loss_value_dict['t-1'] = loss_value_dict['t']
+            loss_value_dict['t']   = loss_pack
+
+        if iter_ > 2:
+            loss_weights_dict = Dynamic_weight_averaging(loss_value_dict, loss_weights_dict, 1)
+
         loss_list = []
         for key in list(loss_pack.keys()):
             loss_list.append((loss_weights_dict[key] * loss_pack[key].mean()).unsqueeze(0))
