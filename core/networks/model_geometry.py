@@ -376,13 +376,14 @@ class Model_geometry(nn.Module):
         F_meta = E.bmm(intrinsics_inverse)
         F = torch.inverse(intrinsics.permute([0, 2, 1])).bmm(F_meta)  # T and then -1
 
-        epi_line = F.bmm(points1) # [b,3,n]
-        a = epi_line[:,0,:].unsqueeze(1) # [b,1,n]
-        b = epi_line[:,1,:].unsqueeze(1) # [b,1,n]
-        dist_div = torch.sqrt(a*a + b*b) + 1e-6
+        epi_line = F.bmm(points2) # [b,3,n]
+        # a = epi_line[:,0,:].unsqueeze(1) # [b,1,n]
+        # b = epi_line[:,1,:].unsqueeze(1) # [b,1,n]
+        # dist_div = torch.sqrt(a*a + b*b) + 1e-6
 
-        geom_dist = torch.abs(torch.sum(points2 * epi_line, dim=1, keepdim=True)) #[b,1,n]
-        epipolar = geom_dist / dist_div #[b,1,n]
+        geom_dist = torch.abs(torch.sum(points1 * epi_line, dim=1, keepdim=True)) #[b,1,n]
+        # epipolar = geom_dist / dist_div #[b,1,n]
+        epipolar = geom_dist  #[b,1,n]
         epipolar = epipolar.view([batch_size,1,flow_h,flow_w]) 
 
 
@@ -401,19 +402,19 @@ class Model_geometry(nn.Module):
         return epipolar
         # return dist_map, epipolar
 
-    def compute_epipolar_loss(self, dist_map, rigid_mask, inlier_mask):
+    # def compute_epipolar_loss(self, dist_map, rigid_mask, inlier_mask):
 
-        loss = (dist_map * (rigid_mask - inlier_mask)).mean((1,2,3)) / \
-             ((rigid_mask - inlier_mask).mean((1,2,3)) + 1e-4)
+    #     loss = (dist_map * (rigid_mask - inlier_mask)).mean((1,2,3)) / \
+    #          ((rigid_mask - inlier_mask).mean((1,2,3)) + 1e-4)
+
+    #     return loss
+
+    def compute_epipolar_loss(self, dist_map, rigid_mask):
+    
+        loss = (dist_map*rigid_mask).mean((1,2,3)) / (rigid_mask.mean((1,2,3)) + 1e-12)
+        loss = dist_map.mean((1,2,3))
 
         return loss
-
-    # def compute_epipolar_loss(self, dist_map, rigid_mask):
-    
-        # loss = (dist_map*rigid_mask).mean((1,2,3)) / (rigid_mask.mean((1,2,3)) + 1e-12)
-        # loss = dist_map.mean((1,2,3))
-
-        # return loss
 
     def get_rigid_mask(self, dist_map):
         with torch.no_grad():
@@ -812,12 +813,12 @@ class Model_geometry(nn.Module):
         flow_diff_fwd, dynamic_masks_fwd, flow_diff_scores_fwd = self.compute_dynamic_mask(K, disp_list, pose_vec_fwd, optical_flows_fwd)
 
         # rigid mask by epipolar
-        # dist_map_bwd = self.compute_epipolar_map(pose_vec_bwd, optical_flows_bwd[0], K, K_inv)
+        dist_map_bwd = self.compute_epipolar_map(pose_vec_bwd, optical_flows_bwd[0], K, K_inv)
         # dist_map_bwd, epipolar_bwd = self.compute_epipolar_map(pose_vec_bwd, optical_flows_bwd[0], K, K_inv)
-        # dist_map_fwd = self.compute_epipolar_map(pose_vec_fwd, optical_flows_fwd[0], K, K_inv)
+        dist_map_fwd = self.compute_epipolar_map(pose_vec_fwd, optical_flows_fwd[0], K, K_inv)
         # dist_map_fwd, epipolar_fwd = self.compute_epipolar_map(pose_vec_fwd, optical_flows_fwd[0], K, K_inv)
-        # rigid_mask_bwd, inlier_mask_bwd, rigid_score_bwd = self.get_rigid_mask(dist_map_bwd)
-        # rigid_mask_fwd, inlier_mask_fwd, rigid_score_fwd = self.get_rigid_mask(dist_map_fwd)
+        rigid_mask_bwd, inlier_mask_bwd, rigid_score_bwd = self.get_rigid_mask(dist_map_bwd)
+        rigid_mask_fwd, inlier_mask_fwd, rigid_score_fwd = self.get_rigid_mask(dist_map_fwd)
 
         # select points for geometry calculation
         # filtered_matches_fwd, filtered_depth_fwd = self.sample_match(optical_flows_fwd[0], disp_list[0], rigid_score_fwd)
@@ -827,13 +828,13 @@ class Model_geometry(nn.Module):
 
 
         # compute epipolar loss by 8 point method
-        dist_map_bwd = self.compute_epipolar_map_8pF(filtered_matches_bwd, pose_vec_bwd, optical_flows_bwd[0], K, K_inv)
-        dist_map_fwd = self.compute_epipolar_map_8pF(filtered_matches_fwd, pose_vec_fwd, optical_flows_fwd[0], K, K_inv)
-        rigid_mask_bwd, inlier_mask_bwd, rigid_score_bwd = self.get_rigid_mask(dist_map_bwd)
-        rigid_mask_fwd, inlier_mask_fwd, rigid_score_fwd = self.get_rigid_mask(dist_map_fwd)
+        # dist_map_bwd = self.compute_epipolar_map_8pF(filtered_matches_bwd, pose_vec_bwd, optical_flows_bwd[0], K, K_inv)
+        # dist_map_fwd = self.compute_epipolar_map_8pF(filtered_matches_fwd, pose_vec_fwd, optical_flows_fwd[0], K, K_inv)
+        # rigid_mask_bwd, inlier_mask_bwd, rigid_score_bwd = self.get_rigid_mask(dist_map_bwd)
+        # rigid_mask_fwd, inlier_mask_fwd, rigid_score_fwd = self.get_rigid_mask(dist_map_fwd)
 
-        rigid_mask_bwd_list = self.generate_img_pyramid(rigid_mask_bwd,self.num_scales)
-        rigid_mask_fwd_list = self.generate_img_pyramid(rigid_mask_fwd,self.num_scales)
+        # rigid_mask_bwd_list = self.generate_img_pyramid(rigid_mask_bwd,self.num_scales)
+        # rigid_mask_fwd_list = self.generate_img_pyramid(rigid_mask_fwd,self.num_scales)
         
         # fusion mask
         # fwd_mask = self.fusion_mask(valid_masks_to_r, occ_mask_fwd, dynamic_masks_fwd)
@@ -917,9 +918,9 @@ class Model_geometry(nn.Module):
 
         # loss_pack['loss_epipolar'] = self.compute_epipolar_loss(dist_map_bwd, rigid_mask_bwd, inlier_mask_bwd) + \
             # self.compute_epipolar_loss(dist_map_fwd, rigid_mask_fwd, inlier_mask_fwd)
-        # loss_pack['loss_epipolar'] = self.compute_epipolar_loss(epipolar_bwd, valid_mask_bwd[0]) + \
-            # self.compute_epipolar_loss(epipolar_fwd, valid_mask_fwd[0])
-        loss_pack['loss_epipolar'] = torch.zeros([2]).to(img_l.get_device()).requires_grad_()
+        loss_pack['loss_epipolar'] = self.compute_epipolar_loss(dist_map_bwd, valid_mask_bwd[0]) + \
+            self.compute_epipolar_loss(dist_map_fwd, valid_mask_fwd[0])
+        # loss_pack['loss_epipolar'] = torch.zeros([2]).to(img_l.get_device()).requires_grad_()
 
         # loss_pack['loss_triangle'] = self.compute_triangulate_loss(filtered_matches_bwd, pose_vec_bwd, K, K_inv, disp_list, disp_l_list) + \
             # self.compute_triangulate_loss(filtered_matches_fwd, pose_vec_fwd, K, K_inv, disp_list, disp_r_list)
@@ -931,8 +932,8 @@ class Model_geometry(nn.Module):
         #     self.compute_pnp_loss(filtered_depth_fwd, filtered_matches_fwd, pose_vec_fwd, K, K_inv)
         loss_pack['loss_pnp'] = torch.zeros([2]).to(img_l.get_device()).requires_grad_()
 
-        loss_pack['loss_eight_point'] = self.compute_eight_point_loss(filtered_matches_bwd, pose_vec_bwd, K, K_inv) + \
-            self.compute_eight_point_loss(filtered_matches_fwd, pose_vec_fwd, K, K_inv)
-        # loss_pack['loss_eight_point'] = torch.zeros([2]).to(img_l.get_device()).requires_grad_()
+        # loss_pack['loss_eight_point'] = self.compute_eight_point_loss(filtered_matches_bwd, pose_vec_bwd, K, K_inv) + \
+            # self.compute_eight_point_loss(filtered_matches_fwd, pose_vec_fwd, K, K_inv)
+        loss_pack['loss_eight_point'] = torch.zeros([2]).to(img_l.get_device()).requires_grad_()
 
         return loss_pack, mask_pack
