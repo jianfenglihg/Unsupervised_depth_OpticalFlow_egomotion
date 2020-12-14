@@ -17,12 +17,12 @@ num_input_frames: 3
 num_iterations: 200000
 
 # loss hyperparameters
-w_flow_pixel: 0.15
+w_flow_pixel: 1.0 #0.15
 w_flow_ssim: 0.85 # w_pixel = 1 - w_ssim
-w_flow_smooth: 10.0
+w_flow_smooth: 1.0 #10.0
 w_flow_consis: 0.01
 
-w_depth_pixel: 0.15
+w_depth_pixel: 1.0 #0.15
 w_depth_ssim: 0.85
 w_depth_smooth: 0.1 # 10.0
 w_depth_consis: 0.1
