@@ -44,6 +44,7 @@ def flow_to_image(flow, max_flow=256):
     im_s = np.clip(mag * n / max_flow, a_min=0, a_max=1)
     im_v = np.clip(n - im_s, a_min=0, a_max=1)
     im = hsv_to_rgb(np.stack([im_h, im_s, im_v], 2))
+    im = im.transpose(2, 0, 1)
     return (im * 255).astype(np.uint8)
 
 

@@ -190,7 +190,7 @@ def train(cfg, observer):
 
 
                 # image
-            if iter_ and iter_ % (cfg.vis_interval*10) == 0:
+            if iter_ and iter_ % (cfg.vis_interval * 10) == 0:
                 observer.add_image('origin_middle_image', mask_pack['origin_middle_image'], iter_)
                 observer.add_image('occ_fwd_mask', mask_pack['occ_fwd_mask'], iter_)
                 observer.add_image('dyna_fwd_mask', mask_pack['dyna_fwd_mask'], iter_)
