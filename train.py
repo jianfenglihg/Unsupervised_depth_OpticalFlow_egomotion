@@ -4,7 +4,7 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from core.dataset import KITTI_RAW, KITTI_Prepared, NYU_Prepare, NYU_v2, KITTI_Odo
 from core.networks import get_model
 from core.config import generate_loss_weights_dict
-from core.visualize import Visualizer
+from core.visualize import Visualizer, flow_to_image
 from core.evaluation import load_gt_flow_kitti, load_gt_mask
 from test import test_kitti_2012, test_kitti_2015, test_eigen_depth, test_nyu, load_nyu_test_data
 
@@ -200,9 +200,9 @@ def train(cfg, observer):
                 observer.add_image('fwd_mask', mask_pack['fwd_mask'], iter_)
                 observer.add_image('texture_mask_fwd', mask_pack['texture_mask_fwd'], iter_)
 
-                observer.add_image('pred_depth', visualizer.tensor2array(mask_pack['pred_depth_img'],max_value=None, colormap='magma'), iter_)
+                observer.add_image('pred_depth', visualizer.tensor2array(1/mask_pack['pred_depth_img'],max_value=None, colormap='magma'), iter_)
                 observer.add_image('pred_disp', visualizer.tensor2array(1/mask_pack['pred_depth_img'],max_value=None, colormap='bone'), iter_)
-                
+                observer.add_image('pred_flow', flow_to_image(mask_pack['pred_flow_img']), iter_)
             
         loss_list = []
         for key in list(loss_pack.keys()):

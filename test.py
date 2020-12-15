@@ -3,7 +3,8 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from core.dataset import KITTI_2012, KITTI_2015, KITTI_pose
 from core.evaluation import eval_flow_avg, load_gt_flow_kitti
 from core.evaluation import eval_depth
-from core.visualize import Visualizer_debug
+# from core.visualize import Visualizer_debug
+from core.visualize import Visualizer_debug, resize_flow, flow_to_image, flow_write_png
 from core.networks import Model_depth_pose, Model_flow, Model_flowposenet, Model_depth, Model_geometry
 from core.evaluation import load_gt_flow_kitti, load_gt_mask
 from core.networks.structures.inverse_warp import pose_vec2mat 

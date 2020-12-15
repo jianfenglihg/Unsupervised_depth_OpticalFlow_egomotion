@@ -869,6 +869,7 @@ class Model_geometry(nn.Module):
         mask_pack['fwd_mask'] = 255*fwd_mask[0][0].cpu().detach().numpy().astype(np.uint8)
         mask_pack['texture_mask_fwd'] = 255*texture_mask_fwd[0][0].cpu().detach().numpy().astype(np.uint8)
         mask_pack['pred_depth_img'] = disp_list[0][0]
+        mask_pack['pred_flow_img'] = optical_flows_fwd[0][0].detach().cpu().numpy().transpose([1, 2, 0])
         mask_pack['origin_middle_image'] = img[0].cpu().detach().numpy()
 
         # depth and pose
