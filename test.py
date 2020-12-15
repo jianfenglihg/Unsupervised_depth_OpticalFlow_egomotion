@@ -263,6 +263,53 @@ def test_single_image(img_path, model, training_hw, save_dir='./'):
     print('Depth prediction saved in ' + save_dir)
 
 
+def test_kitti_2015_view(cfg, model, gt_flows, noc_masks, gt_masks, depth_save_dir=None):
+    dataset = KITTI_2015(cfg.gt_2015_dir)
+    visualizer = Visualizer_debug(depth_save_dir)
+    pred_flow_list = []
+    pred_disp_list = []
+    img_list = []
+    for idx, inputs in enumerate(tqdm(dataset)):
+        # img, K, K_inv = inputs
+        img = inputs
+        img = img[None,:,:,:]
+        
+        img_h = int(img.shape[2] / 2)
+        img1, img2 = img[:,:,:img_h,:], img[:,:,img_h:,:]
+        img_list.append(img1)
+        img1, img2 = img1.cuda(), img2.cuda()
+        # h, w = img1.shape[2:]
+        h = 375
+        w = 1242
+        # print(img1.shape)
+        if cfg.mode == 'flow' or cfg.mode == 'flowposenet':
+            flow = model.inference_flow(img1, img2)
+        # else:
+        #     flow, disp1, disp2, Rt, _, _ = model.inference(img1, img2, K, K_inv)
+        #     disp = disp1[0].detach().cpu().numpy()
+        #     disp = disp.transpose(1,2,0)
+        #     pred_disp_list.append(disp)
+
+        flow_12 = resize_flow(flow, (h, w))
+        # np_flow_12 = flow_12[0].detach().cpu().numpy()
+        np_flow_12 = flow_12[0].detach().cpu().numpy().transpose([1, 2, 0])
+        flow_write_png('./results/submit_%d.png'% idx, np_flow_12[:,:,0], np_flow_12[:,:,1])
+        vis_flow = flow_to_image(np_flow_12)
+        cv2.imwrite('./results/%d.png' % idx, vis_flow)
+        
+        flow = flow[0].detach().cpu().numpy()
+        
+        flow = flow.transpose(1,2,0)
+        pred_flow_list.append(flow)
+        
+    #pdb.set_trace()
+    eval_flow_res = eval_flow_avg(gt_flows, noc_masks, pred_flow_list, cfg, moving_masks=gt_masks, write_img=False)
+    print('CONFIG: {0}, mode: {1}'.format(cfg.config_file, cfg.mode))
+    print('[EVAL] [KITTI 2015]')
+    print(eval_flow_res)
+    ## depth evaluation
+    return eval_flow_res
+
 if __name__ == '__main__':
     import argparse
     arg_parser = argparse.ArgumentParser(
