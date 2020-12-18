@@ -34,7 +34,7 @@ def Dynamic_weight_averaging(loss_value_pack, loss_weight_pack,T=1):
     for key in list(loss_value_pack['t'].keys()):
         Lt_2 = loss_value_pack['t-2'][key].mean().detach().cpu().numpy()
         Lt_1 = loss_value_pack['t-1'][key].mean().detach().cpu().numpy()
-        rtmp = Lt_1/Lt_2
+        rtmp = (Lt_1+1e-8)/(Lt_2+1e-8)
         r[key] = rtmp/T
 
     r_sum = 0
