@@ -920,8 +920,10 @@ class Model_geometry(nn.Module):
 
         # loss_pack['loss_epipolar'] = self.compute_epipolar_loss(dist_map_bwd, rigid_mask_bwd, inlier_mask_bwd) + \
             # self.compute_epipolar_loss(dist_map_fwd, rigid_mask_fwd, inlier_mask_fwd)
-        loss_pack['loss_epipolar'] = self.compute_epipolar_loss(dist_map_bwd, valid_mask_bwd[0]) + \
-            self.compute_epipolar_loss(dist_map_fwd, valid_mask_fwd[0])
+        loss_pack['loss_epipolar'] = self.compute_epipolar_loss(dist_map_bwd, dynamic_masks_bwd[0]) + \
+            self.compute_epipolar_loss(dist_map_fwd, dynamic_masks_fwd[0])
+        # loss_pack['loss_epipolar'] = self.compute_epipolar_loss(dist_map_bwd, valid_mask_bwd[0]) + \
+        #     self.compute_epipolar_loss(dist_map_fwd, valid_mask_fwd[0])
         # loss_pack['loss_epipolar'] = torch.zeros([2]).to(img_l.get_device()).requires_grad_()
 
         # loss_pack['loss_triangle'] = self.compute_triangulate_loss(filtered_matches_bwd, pose_vec_bwd, K, K_inv, disp_list, disp_l_list) + \
@@ -934,8 +936,8 @@ class Model_geometry(nn.Module):
         #     self.compute_pnp_loss(filtered_depth_fwd, filtered_matches_fwd, pose_vec_fwd, K, K_inv)
         loss_pack['loss_pnp'] = torch.zeros([2]).to(img_l.get_device()).requires_grad_()
 
-        # loss_pack['loss_eight_point'] = self.compute_eight_point_loss(filtered_matches_bwd, pose_vec_bwd, K, K_inv) + \
-            # self.compute_eight_point_loss(filtered_matches_fwd, pose_vec_fwd, K, K_inv)
-        loss_pack['loss_eight_point'] = torch.zeros([2]).to(img_l.get_device()).requires_grad_()
+        loss_pack['loss_eight_point'] = self.compute_eight_point_loss(filtered_matches_bwd, pose_vec_bwd, K, K_inv) + \
+            self.compute_eight_point_loss(filtered_matches_fwd, pose_vec_fwd, K, K_inv)
+        # loss_pack['loss_eight_point'] = torch.zeros([2]).to(img_l.get_device()).requires_grad_()
 
         return loss_pack, mask_pack

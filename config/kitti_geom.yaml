@@ -24,10 +24,10 @@ w_flow_consis: 0.01
 
 w_depth_pixel: 1.0 #0.15
 w_depth_ssim: 0.85
-w_depth_smooth: 0.1 # 10.0
+w_depth_smooth: 0.5 # 10.0
 w_depth_consis: 0.1
 
-w_depth_flow_consis: 0.01
+w_depth_flow_consis: 0.1
 w_epipolar: 0.1
 w_triangle: 0.001
 w_pnp: 0.1
