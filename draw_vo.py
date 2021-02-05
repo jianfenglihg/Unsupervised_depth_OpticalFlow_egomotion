@@ -117,7 +117,7 @@ def draw_pose_odom(cfg, model):
         final_poses = first_inv_transform[:,:3] @ transform_matrices
         final_poses[:,:,-1:] += first_inv_transform[:,-1:]
 
-        gt_xyz[j] = sample['pose'][1,:,-1] + last_gt_xyz
+        gt_xyz[j] = sample['poses'][1,:,-1] + last_gt_xyz
         last_gt_xyz = gt_xyz[j]
 
     fig = plt.figure()
