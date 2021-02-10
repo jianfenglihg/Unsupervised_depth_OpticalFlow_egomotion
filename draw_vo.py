@@ -21,67 +21,6 @@ import matplotlib.pyplot as plt
 
 
 
-def compute_pose_error(gt, pred):
-    RE = 0
-    snippet_length = gt.shape[0]
-    scale_factor = np.sum(gt[:,:,-1] * pred[:,:,-1])/np.sum(pred[:,:,-1] ** 2)
-    ATE = np.linalg.norm((gt[:,:,-1] - scale_factor * pred[:,:,-1]).reshape(-1))
-    for gt_pose, pred_pose in zip(gt, pred):
-        # Residual matrix to which we compute angle's sin and cos
-        R = gt_pose[:,:3] @ np.linalg.inv(pred_pose[:,:3])
-        s = np.linalg.norm([R[0,1]-R[1,0],
-                            R[1,2]-R[2,1],
-                            R[0,2]-R[2,0]])
-        c = np.trace(R) - 1
-        # Note: we actually compute double of cos and sin, but arctan2 is invariant to scale
-        RE += np.arctan2(s,c)
-
-    return ATE/snippet_length, RE/snippet_length
-
-
-def test_pose_odom(cfg, model):
-    print('Evaluate pose using kitti odom. Using model in '+cfg.model_dir)
-    dataset_dir = Path(cfg.kitti_odom_dir)
-    dataset = KITTI_pose(dataset_dir, cfg.sequences, 3)
-    print('{} snippets to test'.format(len(dataset)))
-    device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
-
-    errors = np.zeros((len(dataset), 2), np.float32)
-    for j, sample in enumerate(tqdm(dataset)):
-        imgs = sample['imgs']
-        imgl = cv2.resize(imgs[0], (cfg.img_hw[1], cfg.img_hw[0])).astype(np.float32)
-        img  = cv2.resize(imgs[1], (cfg.img_hw[1], cfg.img_hw[0])).astype(np.float32)
-        imgr = cv2.resize(imgs[2], (cfg.img_hw[1], cfg.img_hw[0])).astype(np.float32)
-        imgs = np.concatenate([imgl, img, imgr], 2)
-        img_input = torch.from_numpy(imgs / 255.0).float().cuda().unsqueeze(0).permute(0,3,1,2)
-
-        poses = model.infer_pose(img_input)
-
-        poses = poses.detach().cpu()[0]
-        poses = torch.cat([poses[0].view(-1,6), torch.zeros(1,6).float(), poses[1].view(-1,6)])
-
-        inv_transform_matrices = pose_vec2mat(poses).numpy().astype(np.float64)
-
-        rot_matrices = np.linalg.inv(inv_transform_matrices[:,:,:3])
-        tr_vectors = -rot_matrices @ inv_transform_matrices[:,:,-1:]
-
-        transform_matrices = np.concatenate([rot_matrices, tr_vectors], axis=-1)
-
-        first_inv_transform = inv_transform_matrices[0]
-        final_poses = first_inv_transform[:,:3] @ transform_matrices
-        final_poses[:,:,-1:] += first_inv_transform[:,-1:]
-
-        ATE, RE = compute_pose_error(sample['poses'], final_poses)
-        errors[j] = ATE, RE
-
-    mean_errors = errors.mean(0)
-    std_errors = errors.std(0)
-    error_names = ['ATE','RE']
-    print("Results")
-    print("\t {:>10}, {:>10}".format(*error_names))
-    print("mean \t {:10.4f}, {:10.4f}".format(*mean_errors))
-    print("std \t {:10.4f}, {:10.4f}".format(*std_errors))
-
 
 def draw_pose_odom(cfg, model):
     print('Evaluate pose using kitti odom. Using model in '+cfg.model_dir)
@@ -92,7 +31,9 @@ def draw_pose_odom(cfg, model):
 
     errors = np.zeros((len(dataset), 2), np.float32)
     gt_xyz = np.zeros((3, len(dataset)), np.float32)
+    pre_xyz = np.zeros((3, len(dataset)), np.float32)
     last_gt_xyz = np.zeros((3,1), np.float32)
+    last_pre_xyz = np.zeros((3,1), np.float32)
     for j, sample in enumerate(tqdm(dataset)):
         imgs = sample['imgs']
         imgl = cv2.resize(imgs[0], (cfg.img_hw[1], cfg.img_hw[0])).astype(np.float32)
@@ -111,13 +52,14 @@ def draw_pose_odom(cfg, model):
         rot_matrices = np.linalg.inv(inv_transform_matrices[:,:,:3])
         tr_vectors = -rot_matrices @ inv_transform_matrices[:,:,-1:]
 
-        transform_matrices = np.concatenate([rot_matrices, tr_vectors], axis=-1)
+        # transform_matrices = np.concatenate([rot_matrices, tr_vectors], axis=-1)
 
-        first_inv_transform = inv_transform_matrices[0]
-        final_poses = first_inv_transform[:,:3] @ transform_matrices
-        final_poses[:,:,-1:] += first_inv_transform[:,-1:]
-        gt_xyz[:,[j]] = -sample['poses'][1,:,:3].T @ sample['poses'][1,:,-1:] + last_gt_xyz
-        last_gt_xyz = gt_xyz[:,[j]]
+        # first_inv_transform = inv_transform_matrices[0]
+        # final_poses = first_inv_transform[:,:3] @ transform_matrices
+        # final_poses[:,:,-1:] += first_inv_transform[:,-1:]
+        # gt_xyz[:,[j]] = -sample['poses'][1,:,:3].T @ sample['poses'][1,:,-1:] + last_gt_xyz
+        pre_xyz[:,[j]] = tr_vectors[2,:,-1:] + last_pre_xyz 
+        last_pre_xyz = pre_xyz[:,[j]]
 
     fig = plt.figure()
     ax = fig.gca(projection='3d')
@@ -125,7 +67,7 @@ def draw_pose_odom(cfg, model):
     ax.set_xlabel("x")
     ax.set_ylabel("y")
     ax.set_zlabel("z")
-    figure = ax.plot(gt_xyz[0,:], gt_xyz[1,:], gt_xyz[2,:], c='r')
+    figure = ax.plot(pre_xyz[0,:], pre_xyz[1,:], pre_xyz[2,:], c='r')
     plt.show()
 
     
@@ -182,8 +124,6 @@ if __name__ == '__main__':
     model.eval()
     print('Model Loaded.')
 
-    if args.task == 'kitti_pose':
-        test_pose_odom(cfg_new, model)
-    elif args.task == 'draw_pose':
+    if args.task == 'draw_pose':
         draw_pose_odom(cfg_new, model)
         
