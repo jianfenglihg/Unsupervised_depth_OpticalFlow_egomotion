@@ -257,6 +257,7 @@ def test_single_image(img_path, model, training_hw, save_dir='./'):
     disp = model.infer_depth(img_t)
     disp = np.transpose(disp[0].cpu().detach().numpy(), [1,2,0])
     disp_resized = cv2.resize(disp, (w,h))
+    
     depth = 1.0 / (1e-6 + disp_resized)
 
     visualizer = Visualizer_debug(dump_dir=save_dir)

@@ -8,7 +8,7 @@ from __future__ import absolute_import, division, print_function
 
 import torch
 import torch.nn as nn
-from attention import CAM_Module
+# from attention import CAM_Module
 
 
 class PoseCNN(nn.Module):

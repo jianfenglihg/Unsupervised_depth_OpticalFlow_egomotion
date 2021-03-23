@@ -8,7 +8,7 @@ gt_2012_dir: '/media/ljf/Work/DATASET/kitti-flow/kitti2012/training'
 gt_2015_dir: '/media/ljf/Work/DATASET/kitti-flow/kitti2015/data_scene_flow/training'
 static_frames_txt: '/home/ljf/Documents/Unsupervised_geometry/data/eigen/static_frames.txt'
 test_scenes_txt: '/home/ljf/Documents/Unsupervised_geometry/data/eigen/test_scenes.txt'
-sequences: ['09']
+sequences: ['03']
 dataset: 'kitti_depth'
 num_scales: 3
 num_input_frames: 3
