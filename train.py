@@ -13,7 +13,7 @@ import torch
 import torch.utils.data
 from tqdm import tqdm
 import shutil
-import pickle
+import json
 import pdb
 
 from tensorboardX import SummaryWriter
@@ -143,25 +143,24 @@ def train(cfg, observer):
                 if cfg.mode == 'flow':
                     eval_2012_res = test_kitti_2012(cfg, model_eval, gt_flows_2012, noc_masks_2012)
                     eval_2015_res = test_kitti_2015(cfg, model_eval, gt_flows_2015, noc_masks_2015, gt_masks_2015, depth_save_dir=os.path.join(cfg.model_dir, 'results'))
-                    visualizer.add_log_pack({'eval_2012_res': eval_2012_res, 'eval_2015_res': eval_2015_res})
+                    visualizer.add_log_pack('flow_{}'.format(iter_), {'eval_2012_res': eval_2012_res, 'eval_2015_res': eval_2015_res})
                 if cfg.mode == 'depth':
                     eval_depth_res = test_eigen_depth(cfg, model_eval)
-                    visualizer.add_log_pack({'eval_eigen_res': eval_depth_res})
+                    visualizer.add_log_pack('depth_{}'.format(iter_), {'eval_eigen_res': eval_depth_res})
                 if cfg.mode == 'geom':
                     eval_2012_res = test_kitti_2012(cfg, model_eval, gt_flows_2012, noc_masks_2012)
                     eval_2015_res = test_kitti_2015(cfg, model_eval, gt_flows_2015, noc_masks_2015, gt_masks_2015, depth_save_dir=os.path.join(cfg.model_dir, 'results'))
-                    visualizer.add_log_pack({'eval_2012_res': eval_2012_res, 'eval_2015_res': eval_2015_res})
-                    eval_depth_res = test_eigen_depth(cfg, model_eval)
-                    visualizer.add_log_pack({'eval_eigen_res': eval_depth_res})
-                    
-                    abs_rel, sq_rel, rms, log_rms, a1, a2, a3 = eval_depth_res
+                    visualizer.add_log_pack('flow_{}'.format(iter_), {'eval_2012_res': eval_2012_res, 'eval_2015_res': eval_2015_res})
+                    eval_depth_res,abs_rel = test_eigen_depth(cfg, model_eval)
+                    visualizer.add_log_pack('depth_{}'.format(iter_), {'eval_eigen_res': eval_depth_res})
+
                     observer.add_scalar('test_depth', abs_rel, iter_)
 
             elif cfg.dataset == 'nyuv2':
                 if not cfg.mode == 'flow':
                     eval_nyu_res = test_nyu(cfg, model_eval, test_images, test_gt_depths)
-                    visualizer.add_log_pack({'eval_nyu_res': eval_nyu_res})
-            visualizer.dump_log(os.path.join(cfg.model_dir, 'log.pkl'))
+                    visualizer.add_log_pack('flow_{}'.format(iter_), {'eval_nyu_res': eval_nyu_res})
+            visualizer.dump_log(os.path.join(cfg.model_dir, 'log.json'))
 
         
         model.train()
@@ -229,7 +228,7 @@ if __name__ == '__main__':
     )
     arg_parser.add_argument('-c', '--config_file', default=None, help='config file.')
     arg_parser.add_argument('-g', '--gpu', type=str, default=0, help='gpu id.')
-    arg_parser.add_argument('--batch_size', type=int, default=8, help='batch size.')
+    arg_parser.add_argument('--batch_size', type=int, default=4, help='batch size.')
     arg_parser.add_argument('--iter_start', type=int, default=0, help='starting iteration.')
     arg_parser.add_argument('--lr', type=float, default=0.0001, help='learning rate')
     arg_parser.add_argument('--num_workers', type=int, default=0, help='number of workers.')
@@ -265,7 +264,7 @@ if __name__ == '__main__':
     with open(args.config_file, 'r') as f:
         cfg = yaml.safe_load(f)
     cfg['img_hw'] = (cfg['img_hw'][0], cfg['img_hw'][1])
-    cfg['log_dump_dir'] = os.path.join(args.model_dir, 'log.pkl')
+    cfg['log_dump_dir'] = os.path.join(args.model_dir, 'log.json')
     shutil.copy(args.config_file, args.model_dir)
 
     # copy attr into cfg
@@ -288,8 +287,11 @@ if __name__ == '__main__':
     cfg_new = pObject()
     for attr in list(cfg.keys()):
         setattr(cfg_new, attr, cfg[attr])
-    with open(os.path.join(args.model_dir, 'config.pkl'), 'wb') as f:
-        pickle.dump(cfg_new, f)
+    with open(os.path.join(args.model_dir, 'config.json'), 'w', encoding='utf-8') as f:
+        cfg_dict = cfg_new.__dict__
+        cfg_dict.pop('_get_args')
+        cfg_dict.pop('_get_kwargs')
+        json.dump(cfg_dict, f, indent=4)
 
     # visualizer
     visualizer = SummaryWriter()

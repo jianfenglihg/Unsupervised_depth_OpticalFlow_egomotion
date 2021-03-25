@@ -3,6 +3,7 @@ import numpy as np
 import cv2
 import pdb
 import pickle
+import json
 from mpl_toolkits import mplot3d
 import matplotlib.pyplot as plt
 import PIL.Image as pil
@@ -19,7 +20,7 @@ class Visualizer(object):
         # self.use_flow_error = (self.loss_weights_dict['flow_error'] > 0)
         self.dump_dir = dump_dir
 
-        self.log_list = []
+        self.log_list = {}
         self.COLORMAPS = {'rainbow': self.opencv_rainbow(),
                 'magma': self.high_res_colormap(cm.get_cmap('magma')),
                 'bone': cm.get_cmap('bone', 10000)}
@@ -60,14 +61,15 @@ class Visualizer(object):
             array = 0.5 + tensor.numpy()*0.5
         return array
 
-    def add_log_pack(self, log_pack):
-        self.log_list.append(log_pack)
+    def add_log_pack(self, iter, log_pack):
+        self.log_list[iter] = log_pack
+        self.log_list = dict(sorted(self.log_list.items(), key=lambda e:e[0]))
 
     def dump_log(self, fname=None):
         if fname is None:
             fname = self.dump_dir
-        with open(fname, 'wb') as f:
-            pickle.dump(self.log_list, f)
+        with open(fname, 'w') as f:
+            json.dump(self.log_list, f, indent=4)
 
     def print_loss(self, loss_pack, iter_=None):
         

@@ -121,15 +121,12 @@ def test_eigen_depth(cfg, model):
     pred_depths, pred_disp_resized = resize_depths(gt_depths, pred_disp_list)
     eval_depth_res = eval_depth(gt_depths, pred_depths)
     abs_rel, sq_rel, rms, log_rms, a1, a2, a3 = eval_depth_res
-    sys.stderr.write(
-        "{:>10}, {:>10}, {:>10}, {:>10}, {:>10}, {:>10}, {:>10} \n".
-        format('abs_rel', 'sq_rel', 'rms', 'log_rms',
-                'a1', 'a2', 'a3'))
-    sys.stderr.write(
-        "{:10.4f}, {:10.4f}, {:10.3f}, {:10.3f}, {:10.3f}, {:10.3f}, {:10.3f} \n".
-        format(abs_rel, sq_rel, rms, log_rms, a1, a2, a3))
+    result = "{:>10}, {:>10}, {:>10}, {:>10}, {:>10}, {:>10}, {:>10} \n".format('abs_rel', 'sq_rel', 'rms', 'log_rms',
+             'a1', 'a2', 'a3')
+    result += "{:10.4f}, {:10.4f}, {:10.3f}, {:10.3f}, {:10.3f}, {:10.3f}, {:10.3f} \n".format(abs_rel, sq_rel, rms, log_rms, a1, a2, a3)
+    print(result)
 
-    return eval_depth_res
+    return result, abs_rel
 
 
 def test_pose_odom(cfg, model):
