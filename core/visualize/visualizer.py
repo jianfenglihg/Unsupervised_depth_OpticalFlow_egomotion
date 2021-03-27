@@ -63,7 +63,7 @@ class Visualizer(object):
 
     def add_log_pack(self, iter, log_pack):
         self.log_list[iter] = log_pack
-        self.log_list = dict(sorted(self.log_list.items(), key=lambda e:e[0]))
+        # self.log_list = dict(sorted(self.log_list.items(), key=lambda e:e[0]))
 
     def dump_log(self, fname=None):
         if fname is None:

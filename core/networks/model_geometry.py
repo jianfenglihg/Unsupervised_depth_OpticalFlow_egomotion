@@ -124,8 +124,8 @@ class Model_geometry(nn.Module):
             # weight = Variable(weight.data,requires_grad=False)
 
             with torch.no_grad():
-                # weight = (weight > 0.48).float()
-                weight = 2*torch.exp(-(weight-0.5)**2/0.03).float()
+                weight = (weight > 0.485).float()
+                # weight = 2*torch.exp(-(weight-0.5)**2/0.03).float()
                 weight_bwd.append(torch.unsqueeze(weight[:,0,:,:],1))
                 weight_fwd.append(torch.unsqueeze(weight[:,1,:,:],1))
                 
@@ -723,7 +723,7 @@ class Model_geometry(nn.Module):
             flow_diff = flow_diffs[scale]
             b,_,w,h = flow_diff.size()
             # flow_diff_normalized = torch.cat([flow_diff[:,0,:,:].unsqueeze(1)*2/(w-1), flow_diff[:,1,:,:].unsqueeze(1)*2/(h-1)],1)
-            if masks == None:
+            if masks is None:
                 mask = torch.ones(b,1,w,h).to(flow_diff.get_device())
             else:
                 mask = masks[scale]
@@ -861,11 +861,14 @@ class Model_geometry(nn.Module):
         fwd_mask_valid_occ = self.fusion_mask_2item(valid_mask_fwd, occ_mask_fwd)
         bwd_mask_valid_occ = self.fusion_mask_2item(valid_mask_bwd, occ_mask_bwd)
 
-        fwd_mask_valid_occ_rigid = self.fusion_mask_2item(fwd_mask_valid_occ, dynamic_masks_fwd)
-        bwd_mask_valid_occ_rigid = self.fusion_mask_2item(bwd_mask_valid_occ, dynamic_masks_bwd)
+        fwd_mask_dyna_occ = self.fusion_mask_2item(dynamic_masks_fwd, occ_mask_fwd)
+        bwd_mask_dyna_occ = self.fusion_mask_2item(dynamic_masks_bwd, occ_mask_bwd)
 
-        fwd_mask_valid_occ_dyna = self.fusion_mask_2item(fwd_mask_valid_occ, [1-mask for mask in dynamic_masks_fwd])
-        bwd_mask_valid_occ_dyna = self.fusion_mask_2item(bwd_mask_valid_occ, [1-mask for mask in dynamic_masks_bwd])
+        # fwd_mask_valid_occ_rigid = self.fusion_mask_2item(fwd_mask_valid_occ, dynamic_masks_fwd)
+        # bwd_mask_valid_occ_rigid = self.fusion_mask_2item(bwd_mask_valid_occ, dynamic_masks_bwd)
+
+        # fwd_mask_valid_occ_dyna = self.fusion_mask_2item(fwd_mask_valid_occ, [1-mask for mask in dynamic_masks_fwd])
+        # bwd_mask_valid_occ_dyna = self.fusion_mask_2item(bwd_mask_valid_occ, [1-mask for mask in dynamic_masks_bwd])
 
 
         # loss function
@@ -924,10 +927,10 @@ class Model_geometry(nn.Module):
         # loss_pack['loss_flow_consis'] = torch.zeros([2]).to(img_l.get_device()).requires_grad_()
         
         # fusion geom
-        loss_pack['loss_depth_flow_consis'] = self.compute_depth_flow_consis_loss(flow_diff_bwd, None, self.num_scales) + \
-            self.compute_depth_flow_consis_loss(flow_diff_fwd, None, self.num_scales)
-        # loss_pack['loss_depth_flow_consis'] = self.compute_depth_flow_consis_loss(flow_diff_bwd, bwd_mask_texture, self.num_scales) + \
-        #     self.compute_depth_flow_consis_loss(flow_diff_fwd, fwd_mask_texture, self.num_scales)
+        # loss_pack['loss_depth_flow_consis'] = self.compute_depth_flow_consis_loss(flow_diff_bwd, None, self.num_scales) + \
+            # self.compute_depth_flow_consis_loss(flow_diff_fwd, None, self.num_scales)
+        loss_pack['loss_depth_flow_consis'] = self.compute_depth_flow_consis_loss(flow_diff_bwd, bwd_mask_dyna_occ, self.num_scales) + \
+            self.compute_depth_flow_consis_loss(flow_diff_fwd, fwd_mask_dyna_occ, self.num_scales)
 
         # loss_pack['loss_depth_flow_consis'] = self.compute_depth_flow_consis_loss(flow_diff_bwd, bwd_mask, 1) + \
         #     self.compute_depth_flow_consis_loss(flow_diff_fwd, fwd_mask, 1)
