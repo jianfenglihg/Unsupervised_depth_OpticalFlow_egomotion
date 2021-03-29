@@ -171,6 +171,11 @@ def test_pose_odom(cfg, model):
     print("\t {:>10}, {:>10}".format(*error_names))
     print("mean \t {:10.4f}, {:10.4f}".format(*mean_errors))
     print("std \t {:10.4f}, {:10.4f}".format(*std_errors))
+    eval_pose_res = "{:>10}, {:>10}".format(*error_names)
+    eval_pose_res += "mean  {:10.4f}, {:10.4f}".format(*mean_errors)
+    eval_pose_res += "std  {:10.4f}, {:10.4f}".format(*std_errors)
+
+    return eval_pose_res
 
 
 def compute_pose_error(gt, pred):
@@ -367,8 +372,10 @@ if __name__ == '__main__':
         gt_flows_2015, noc_masks_2015 = load_gt_flow_kitti(cfg_new.gt_2015_dir, 'kitti_2015')
         gt_masks_2015 = load_gt_mask(cfg_new.gt_2015_dir)
         flow_res = test_kitti_2015(cfg_new, model, gt_flows_2015, noc_masks_2015, gt_masks_2015)
+        gt_flows_2012, noc_masks_2012 = load_gt_flow_kitti(cfg_new.gt_2012_dir, 'kitti_2012')
+        eval_2012_res = test_kitti_2012(cfg_new, model, gt_flows_2012, noc_masks_2012)
     elif args.task == 'kitti_pose':
-        test_pose_odom(cfg_new, model)
+        res = test_pose_odom(cfg_new, model)
     elif args.task == 'nyuv2':
         test_images, test_gt_depths = load_nyu_test_data(cfg_new.nyu_test_dir)
         depth_res = test_nyu(cfg_new, model, test_images, test_gt_depths)

@@ -20,6 +20,8 @@ class Model_geometry(nn.Module):
     def __init__(self, cfg):
         super(Model_geometry, self).__init__()
 
+        self._cfg = cfg
+
         self.dataset = cfg.dataset
         self.num_scales = cfg.num_scales
         
@@ -886,51 +888,60 @@ class Model_geometry(nn.Module):
         mask_pack['pred_flow_img'] = optical_flows_fwd[0][0].detach().cpu().numpy().transpose([1, 2, 0])
         mask_pack['origin_middle_image'] = img[0].cpu().detach().numpy()
 
+
+
+
         # depth and pose
-        loss_pack['loss_depth_pixel'] = self.compute_photometric_loss(img_list,reconstructed_imgs_from_l,bwd_mask_texture) + \
-            self.compute_photometric_loss(img_list,reconstructed_imgs_from_r,fwd_mask_texture)
-        # loss_pack['loss_depth_pixel'] = self.compute_photometric_depth_loss(img_list,reconstructed_imgs_from_l,img_l_list,bwd_mask) + \
-            # self.compute_photometric_depth_loss(img_list, reconstructed_imgs_from_r, img_r_list, fwd_mask)
-        #loss_pack['loss_depth_pixel'] = torch.zeros([2]).to(img_l.get_device()).requires_grad_()
+        if not self._cfg.fix_depth:
+            loss_pack['loss_depth_pixel'] = self.compute_photometric_loss(img_list,reconstructed_imgs_from_l,bwd_mask_texture) + \
+                self.compute_photometric_loss(img_list,reconstructed_imgs_from_r,fwd_mask_texture)
+            # loss_pack['loss_depth_pixel'] = self.compute_photometric_depth_loss(img_list,reconstructed_imgs_from_l,img_l_list,bwd_mask) + \
+                # self.compute_photometric_depth_loss(img_list, reconstructed_imgs_from_r, img_r_list, fwd_mask)
+            #loss_pack['loss_depth_pixel'] = torch.zeros([2]).to(img_l.get_device()).requires_grad_()
 
-        loss_pack['loss_depth_ssim'] = self.compute_ssim_loss(img_list,reconstructed_imgs_from_l,bwd_mask_texture) + \
-            self.compute_ssim_loss(img_list,reconstructed_imgs_from_r,fwd_mask_texture)
-        # loss_pack['loss_depth_ssim'] = torch.zeros([2]).to(img_l.get_device()).requires_grad_()
+            loss_pack['loss_depth_ssim'] = self.compute_ssim_loss(img_list,reconstructed_imgs_from_l,bwd_mask_texture) + \
+                self.compute_ssim_loss(img_list,reconstructed_imgs_from_r,fwd_mask_texture)
+            # loss_pack['loss_depth_ssim'] = torch.zeros([2]).to(img_l.get_device()).requires_grad_()
 
-        loss_pack['loss_depth_smooth'] = self.compute_smooth_loss(img, disp_list) + self.compute_smooth_loss(img_l, disp_l_list) + \
-            self.compute_smooth_loss(img_r, disp_r_list)
-        #loss_pack['loss_depth_smooth'] = torch.zeros([2]).to(img_l.get_device()).requires_grad_()
+            loss_pack['loss_depth_smooth'] = self.compute_smooth_loss(img, disp_list) + self.compute_smooth_loss(img_l, disp_l_list) + \
+                self.compute_smooth_loss(img_r, disp_r_list)
+            #loss_pack['loss_depth_smooth'] = torch.zeros([2]).to(img_l.get_device()).requires_grad_()
 
-        loss_pack['loss_depth_consis'] =  self.compute_consis_loss(predicted_depths_to_l, computed_depths_to_l, bwd_mask_texture) + \
-            self.compute_consis_loss(predicted_depths_to_r, computed_depths_to_r, fwd_mask_texture)
-        # loss_pack['loss_depth_consis'] = torch.zeros([2]).to(img_l.get_device()).requires_grad_()
+            loss_pack['loss_depth_consis'] =  self.compute_consis_loss(predicted_depths_to_l, computed_depths_to_l, bwd_mask_texture) + \
+                self.compute_consis_loss(predicted_depths_to_r, computed_depths_to_r, fwd_mask_texture)
+            # loss_pack['loss_depth_consis'] = torch.zeros([2]).to(img_l.get_device()).requires_grad_()
 
 
         # flow
-        loss_pack['loss_flow_pixel'] = self.compute_photometric_loss(img_list,img_warped_pyramid_from_l,bwd_mask_valid_occ) + \
-            self.compute_photometric_loss(img_list,img_warped_pyramid_from_r,fwd_mask_valid_occ)
-        # loss_pack['loss_flow_pixel'] = self.compute_photometric_loss(img_list,img_warped_pyramid_from_l,bwd_mask_valid_occ_rigid) + \
-        #     self.compute_photometric_loss(img_list,img_warped_pyramid_from_r,fwd_mask_valid_occ_rigid) + \
-        #     2 * self.compute_photometric_loss(img_list,img_warped_pyramid_from_l,bwd_mask_valid_occ_dyna) + \
-        #     2 * self.compute_photometric_loss(img_list,img_warped_pyramid_from_r,fwd_mask_valid_occ_dyna)
-        # loss_pack['loss_flow_pixel'] = torch.zeros([2]).to(img_l.get_device()).requires_grad_()
+        if not self._cfg.fix_flow:
+            loss_pack['loss_flow_pixel'] = self.compute_photometric_loss(img_list,img_warped_pyramid_from_l,bwd_mask_valid_occ) + \
+                self.compute_photometric_loss(img_list,img_warped_pyramid_from_r,fwd_mask_valid_occ)
+            # loss_pack['loss_flow_pixel'] = self.compute_photometric_loss(img_list,img_warped_pyramid_from_l,bwd_mask_valid_occ_rigid) + \
+            #     self.compute_photometric_loss(img_list,img_warped_pyramid_from_r,fwd_mask_valid_occ_rigid) + \
+            #     2 * self.compute_photometric_loss(img_list,img_warped_pyramid_from_l,bwd_mask_valid_occ_dyna) + \
+            #     2 * self.compute_photometric_loss(img_list,img_warped_pyramid_from_r,fwd_mask_valid_occ_dyna)
+            # loss_pack['loss_flow_pixel'] = torch.zeros([2]).to(img_l.get_device()).requires_grad_()
+    
+            loss_pack['loss_flow_ssim'] = self.compute_ssim_loss(img_list,img_warped_pyramid_from_l,bwd_mask_valid_occ) + \
+                self.compute_ssim_loss(img_list,img_warped_pyramid_from_r,fwd_mask_valid_occ)
+            # loss_pack['loss_flow_ssim'] = torch.zeros([2]).to(img_l.get_device()).requires_grad_()
+    
+            loss_pack['loss_flow_smooth'] = self.compute_loss_flow_smooth(optical_flows_fwd, img_list)  + \
+                self.compute_loss_flow_smooth(optical_flows_bwd, img_list)
+            # loss_pack['loss_flow_smooth'] = torch.zeros([2]).to(img_l.get_device()).requires_grad_()
+    
+            loss_pack['loss_flow_consis'] = self.compute_loss_flow_consis(optical_flows_fwd, optical_flows_bwd, occ_mask_fwd)
+            # loss_pack['loss_flow_consis'] = torch.zeros([2]).to(img_l.get_device()).requires_grad_()
 
-        loss_pack['loss_flow_ssim'] = self.compute_ssim_loss(img_list,img_warped_pyramid_from_l,bwd_mask_valid_occ) + \
-            self.compute_ssim_loss(img_list,img_warped_pyramid_from_r,fwd_mask_valid_occ)
-        # loss_pack['loss_flow_ssim'] = torch.zeros([2]).to(img_l.get_device()).requires_grad_()
 
-        loss_pack['loss_flow_smooth'] = self.compute_loss_flow_smooth(optical_flows_fwd, img_list)  + \
-            self.compute_loss_flow_smooth(optical_flows_bwd, img_list)
-        # loss_pack['loss_flow_smooth'] = torch.zeros([2]).to(img_l.get_device()).requires_grad_()
 
-        loss_pack['loss_flow_consis'] = self.compute_loss_flow_consis(optical_flows_fwd, optical_flows_bwd, occ_mask_fwd)
-        # loss_pack['loss_flow_consis'] = torch.zeros([2]).to(img_l.get_device()).requires_grad_()
-        
+
         # fusion geom
         # loss_pack['loss_depth_flow_consis'] = self.compute_depth_flow_consis_loss(flow_diff_bwd, None, self.num_scales) + \
             # self.compute_depth_flow_consis_loss(flow_diff_fwd, None, self.num_scales)
-        loss_pack['loss_depth_flow_consis'] = self.compute_depth_flow_consis_loss(flow_diff_bwd, bwd_mask_dyna_occ, self.num_scales) + \
-            self.compute_depth_flow_consis_loss(flow_diff_fwd, fwd_mask_dyna_occ, self.num_scales)
+        # loss_pack['loss_depth_flow_consis'] = self.compute_depth_flow_consis_loss(flow_diff_bwd, bwd_mask_dyna_occ, self.num_scales) + \
+        #     self.compute_depth_flow_consis_loss(flow_diff_fwd, fwd_mask_dyna_occ, self.num_scales)
+        loss_pack['loss_depth_flow_consis'] = torch.zeros([2]).to(img_l.get_device()).requires_grad_()
 
         # loss_pack['loss_depth_flow_consis'] = self.compute_depth_flow_consis_loss(flow_diff_bwd, bwd_mask, 1) + \
         #     self.compute_depth_flow_consis_loss(flow_diff_fwd, fwd_mask, 1)
@@ -956,8 +967,8 @@ class Model_geometry(nn.Module):
         #     self.compute_pnp_loss(filtered_depth_fwd, filtered_matches_fwd, pose_vec_fwd, K, K_inv)
         loss_pack['loss_pnp'] = torch.zeros([2]).to(img_l.get_device()).requires_grad_()
 
-        # loss_pack['loss_eight_point'] = self.compute_eight_point_loss(filtered_matches_bwd, pose_vec_bwd, K, K_inv) + \
-            # self.compute_eight_point_loss(filtered_matches_fwd, pose_vec_fwd, K, K_inv)
-        loss_pack['loss_eight_point'] = torch.zeros([2]).to(img_l.get_device()).requires_grad_()
+        loss_pack['loss_eight_point'] = self.compute_eight_point_loss(filtered_matches_bwd, pose_vec_bwd, K, K_inv) + \
+            self.compute_eight_point_loss(filtered_matches_fwd, pose_vec_fwd, K, K_inv)
+        # loss_pack['loss_eight_point'] = torch.zeros([2]).to(img_l.get_device()).requires_grad_()
 
         return loss_pack, mask_pack

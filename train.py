@@ -6,7 +6,7 @@ from core.networks import get_model
 from core.config import generate_loss_weights_dict
 from core.visualize import Visualizer, flow_to_image
 from core.evaluation import load_gt_flow_kitti, load_gt_mask
-from test import test_kitti_2012, test_kitti_2015, test_eigen_depth, test_nyu, load_nyu_test_data
+from test import test_kitti_2012, test_kitti_2015, test_eigen_depth, test_pose_odom, test_nyu, load_nyu_test_data
 
 from collections import OrderedDict
 import torch
@@ -127,8 +127,8 @@ def train(cfg, observer):
         gt_flows_2012, noc_masks_2012 = load_gt_flow_kitti(cfg.gt_2012_dir, 'kitti_2012')
         gt_flows_2015, noc_masks_2015 = load_gt_flow_kitti(cfg.gt_2015_dir, 'kitti_2015')
         gt_masks_2015 = load_gt_mask(cfg.gt_2015_dir)
-    elif cfg.dataset == 'nyuv2':
-        test_images, test_gt_depths = load_nyu_test_data(cfg.nyu_test_dir)
+    # elif cfg.dataset == 'nyuv2':
+    #     test_images, test_gt_depths = load_nyu_test_data(cfg.nyu_test_dir)
 
     # training
     print('starting iteration: {}.'.format(cfg.iter_start))
@@ -156,11 +156,14 @@ def train(cfg, observer):
                         eval_depth_res,abs_rel = test_eigen_depth(cfg, model_eval)
                         visualizer.add_log_pack('depth_{}'.format(iter_), {'eval_eigen_res': eval_depth_res})
                         observer.add_scalar('test_depth', abs_rel, iter_)
+                    if not cfg.fix_pose:
+                        eval_pose_res = test_pose_odom(cfg, model_eval)
+                        visualizer.add_log_pack('pose_{}'.format(iter_), {'eval_pose_res': eval_pose_res})
 
-            elif cfg.dataset == 'nyuv2':
-                if not cfg.mode == 'flow':
-                    eval_nyu_res = test_nyu(cfg, model_eval, test_images, test_gt_depths)
-                    visualizer.add_log_pack('flow_{}'.format(iter_), {'eval_nyu_res': eval_nyu_res})
+            # elif cfg.dataset == 'nyuv2':
+            #     if not cfg.mode == 'flow':
+            #         eval_nyu_res = test_nyu(cfg, model_eval, test_images, test_gt_depths)
+            #         visualizer.add_log_pack('flow_{}'.format(iter_), {'eval_nyu_res': eval_nyu_res})
             visualizer.dump_log(os.path.join(cfg.model_dir, 'log.json'))
 
         
@@ -176,15 +179,18 @@ def train(cfg, observer):
 
         if cfg.mode == 'geom':
             if iter_ and iter_ % cfg.vis_interval == 0:
-                observer.add_scalar('depth_photometric_loss', loss_pack['loss_depth_pixel'].mean().detach().cpu().numpy(), iter_)
-                observer.add_scalar('depth_ssim_loss', loss_pack['loss_depth_ssim'].mean().detach().cpu().numpy(), iter_)
-                observer.add_scalar('depth_smooth_loss', loss_pack['loss_depth_smooth'].mean().detach().cpu().numpy(), iter_)
-                observer.add_scalar('depth_consis_loss', loss_pack['loss_depth_consis'].mean().detach().cpu().numpy(), iter_)
+
+                if not cfg.fix_depth:
+                    observer.add_scalar('depth_photometric_loss', loss_pack['loss_depth_pixel'].mean().detach().cpu().numpy(), iter_)
+                    observer.add_scalar('depth_ssim_loss', loss_pack['loss_depth_ssim'].mean().detach().cpu().numpy(), iter_)
+                    observer.add_scalar('depth_smooth_loss', loss_pack['loss_depth_smooth'].mean().detach().cpu().numpy(), iter_)
+                    observer.add_scalar('depth_consis_loss', loss_pack['loss_depth_consis'].mean().detach().cpu().numpy(), iter_)
                 
-                observer.add_scalar('flow_photometric_loss', loss_pack['loss_flow_pixel'].mean().detach().cpu().numpy(), iter_)
-                observer.add_scalar('flow_ssim_loss', loss_pack['loss_flow_ssim'].mean().detach().cpu().numpy(), iter_)
-                observer.add_scalar('flow_smooth_loss', loss_pack['loss_flow_smooth'].mean().detach().cpu().numpy(), iter_)
-                observer.add_scalar('flow_consis_loss', loss_pack['loss_flow_consis'].mean().detach().cpu().numpy(), iter_)
+                if not cfg.fix_flow:
+                    observer.add_scalar('flow_photometric_loss', loss_pack['loss_flow_pixel'].mean().detach().cpu().numpy(), iter_)
+                    observer.add_scalar('flow_ssim_loss', loss_pack['loss_flow_ssim'].mean().detach().cpu().numpy(), iter_)
+                    observer.add_scalar('flow_smooth_loss', loss_pack['loss_flow_smooth'].mean().detach().cpu().numpy(), iter_)
+                    observer.add_scalar('flow_consis_loss', loss_pack['loss_flow_consis'].mean().detach().cpu().numpy(), iter_)
 
                 observer.add_scalar('depth_flow_consis', loss_pack['loss_depth_flow_consis'].mean().detach().cpu().numpy(), iter_)
                 observer.add_scalar('epipolar', loss_pack['loss_epipolar'].mean().detach().cpu().numpy(), iter_)
@@ -214,7 +220,7 @@ def train(cfg, observer):
         loss = torch.cat(loss_list, 0).sum()
         loss.backward()
         optimizer.step()
-        if (iter_ + 1) % cfg.save_interval == 0:
+        if (iter_) % cfg.save_interval == 0:
             save_model(iter_, cfg.model_dir, 'iter_{}.pth'.format(iter_), model, optimizer)
             save_model(iter_, cfg.model_dir, 'last.pth'.format(iter_), model, optimizer)
     
@@ -234,8 +240,8 @@ if __name__ == '__main__':
     arg_parser.add_argument('--lr', type=float, default=0.0001, help='learning rate')
     arg_parser.add_argument('--num_workers', type=int, default=0, help='number of workers.')
     arg_parser.add_argument('--log_interval', type=int, default=100, help='interval for printing loss.')
-    arg_parser.add_argument('--test_interval', type=int, default=2000, help='interval for evaluation.')
-    arg_parser.add_argument('--save_interval', type=int, default=2000, help='interval for saving models.')
+    arg_parser.add_argument('--test_interval', type=int, default=1000, help='interval for evaluation.')
+    arg_parser.add_argument('--save_interval', type=int, default=1000, help='interval for saving models.')
     arg_parser.add_argument('--vis_interval', type=int, default=50, help='interval for tensorboard models.')
     arg_parser.add_argument('--mode', type=str, default='flow', help='training mode.')
     arg_parser.add_argument('--model_dir', type=str, default=None, help='directory for saving models')
