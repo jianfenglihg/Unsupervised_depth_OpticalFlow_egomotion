@@ -347,15 +347,12 @@ if __name__ == '__main__':
 
     if args.mode == 'flow':
         model = Model_flow(cfg_new)
-    elif args.mode == 'depth' or args.mode == 'flow_3stage':
+    elif args.mode == 'depth':
         model = Model_depth(cfg_new)
     elif args.mode == 'geom':
         model = Model_geometry(cfg_new)
-    elif args.mode == 'flowposenet':
-        model = Model_flowposenet(cfg_new)
-    
-    # if args.task == 'demo':
-    #     model = Model_geometry(cfg_new)
+    elif args.task == 'demo':
+        model = Model_geometry(cfg_new)
 
     model.cuda()
     weights = torch.load(args.pretrained_model)
@@ -371,9 +368,6 @@ if __name__ == '__main__':
         flow_res = test_kitti_2015(cfg_new, model, gt_flows_2015, noc_masks_2015, gt_masks_2015)
     elif args.task == 'kitti_pose':
         test_pose_odom(cfg_new, model)
-    elif args.task == 'nyuv2':
-        test_images, test_gt_depths = load_nyu_test_data(cfg_new.nyu_test_dir)
-        depth_res = test_nyu(cfg_new, model, test_images, test_gt_depths)
     elif args.task == 'demo':
         test_single_image(args.image_path, model, training_hw=cfg['img_hw'], save_dir=args.result_dir)
 
