@@ -1,5 +1,9 @@
 # [Unsupervised Joint Learning of Depth, Optical Flow, Ego-motion from Video](https://arxiv.org/abs/2105.14520)
 
+![Depth](img/depth.gif)
+
+![flow](img/flow.gif)
+
 ## Introduction
 
 We use a joint self-supervised method to estimate the three geometric elements, depth , optical flow, and ego-motion. Compared with other joint self-supervised methods like EPC++, CC, we achieved more precise results in KITTI dataset.
